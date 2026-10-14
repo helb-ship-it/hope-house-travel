@@ -1,0 +1,1 @@
+export const EDU_OPTIONS=["No Formal Education","Primary Education","Secondary Education","Certificate","Diploma","Higher National Diploma","Bachelor's Degree","Postgraduate Diploma","Master's Degree","Doctorate (PhD)","Vocational / Technical Qualification","Currently Studying","Other","Prefer Not to Say"];

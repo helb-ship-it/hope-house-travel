@@ -1,0 +1,572 @@
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, getDocs, query, where, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC7c2BqR7V3hZz...",
+  authDomain: "hope-house-travel.firebaseapp.com",
+  projectId: "hope-house-travel",
+  storageBucket: "hope-house-travel.appspot.com",
+  messagingSenderId: "123456",
+  appId: "1:123456:web:abc"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const DESTS = ["Canada","UK","Norway","USA","Australia","Other Countries"];
+let blacklist = [];
+
+async function loadBlacklist() {
+  try {
+    const snap = await getDocs(collection(db, "blacklist"));
+    blacklist = snap.docs.map(d => d.data().phone);
+  } catch(e) {
+    blacklist = [];
+  }
+}
+loadBlacklist();
+
+function genRef(name){ 
+  const p = name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0,2); 
+  return 'HH-' + p + '-' + Math.floor(1000 + Math.random() * 9000); 
+}
+
+async function createNotification(clientId, title, message){ 
+  try { 
+    await addDoc(collection(db, "notifications"), { clientId, title, message, read: false, createdAt: serverTimestamp() }); 
+  } catch(e) {} 
+}
+
+/* ================= LANDING PAGE & APPLICATION ================= */
+function initLanding(){
+  const appEl = document.querySelector('#app');
+
+  const destsData = [
+    {
+      c: 'Canada', flag: '🇨🇦', 
+      bg: 'linear-gradient(180deg, #38bdf8 0%, #7dd3fc 40%, #e0f2fe 100%)',
+      svg: `<svg viewBox="0 0 200 120" style="width:100%; height:100%;"><rect x="75" y="20" width="12" height="90" fill="#0f2a5c"/><circle cx="81" cy="20" r="4" fill="#38bdf8"/><rect x="110" y="40" width="16" height="70" fill="#1e3a8a"/><path d="M 0 95 Q 50 85 100 95 T 200 95 L 200 120 L 0 120 Z" fill="#0284c7" opacity="0.6"/></svg>`
+    },
+    {
+      c: 'UK', flag: '🇬🇧', 
+      bg: 'linear-gradient(180deg, #60a5fa 0%, #93c5fd 40%, #dbeafe 100%)',
+      svg: `<svg viewBox="0 0 200 120" style="width:100%; height:100%;"><rect x="85" y="30" width="24" height="80" fill="#1e3a8a"/><polygon points="97,10 85,30 109,30" fill="#1e3a8a"/><circle cx="97" cy="45" r="6" fill="#facc15"/><rect x="120" y="50" width="40" height="60" fill="#3b82f6" opacity="0.7"/></svg>`
+    },
+    {
+      c: 'Norway', flag: '🇳🇴', 
+      bg: 'linear-gradient(180deg, #38bdf8 0%, #a5f3fc 50%, #f0fdf4 100%)',
+      svg: `<svg viewBox="0 0 200 120" style="width:100%; height:100%;"><polygon points="0,110 50,40 100,110" fill="#0284c7" opacity="0.5"/><polygon points="60,110 120,25 180,110" fill="#0f2a5c" opacity="0.8"/><polygon points="120,25 105,50 135,50" fill="#ffffff"/><rect x="10" y="80" width="20" height="15" fill="#ef4444"/><rect x="35" y="82" width="18" height="13" fill="#facc15"/></svg>`
+    },
+    {
+      c: 'USA', flag: '🇺🇸', 
+      bg: 'linear-gradient(180deg, #38bdf8 0%, #bae6fd 50%, #e0f2fe 100%)',
+      svg: `<svg viewBox="0 0 200 120" style="width:100%; height:100%;"><rect x="90" y="30" width="8" height="80" fill="#15803d"/><path d="M 90 35 L 82 45 L 94 45 Z" fill="#22c55e"/><rect x="40" y="70" width="120" height="40" fill="#1e3a8a" opacity="0.3"/></svg>`
+    },
+    {
+      c: 'Australia', flag: '🇦🇺', 
+      bg: 'linear-gradient(180deg, #60a5fa 0%, #38bdf8 50%, #bae6fd 100%)',
+      svg: `<svg viewBox="0 0 200 120" style="width:100%; height:100%;"><path d="M 40 100 Q 60 60 90 100 Q 110 65 140 100 Z" fill="#ffffff" opacity="0.9"/><path d="M 70 100 Q 90 70 120 100 Z" fill="#f1f5f9"/></svg>`
+    },
+    {
+      c: 'Other Countries', flag: '🌐', 
+      bg: 'linear-gradient(180deg, #0284c7 0%, #2563eb 50%, #1d4ed8 100%)',
+      svg: `<svg viewBox="0 0 200 120" style="width:100%; height:100%;"><circle cx="100" cy="60" r="35" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.8"/><ellipse cx="100" cy="60" rx="35" ry="14" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.6"/><line x1="100" y1="25" x2="100" y2="95" stroke="#ffffff" stroke-width="2" opacity="0.6"/></svg>`
+    }
+  ];
+
+  let cardsHtml = '';
+  destsData.forEach(d => {
+    cardsHtml += `
+    <div class="destCard" data-dest="${d.c}" style="background:white; border-radius:18px; overflow:hidden; box-shadow:0 10px 25px -5px rgba(15,23,42,0.08); border:1px solid #e2e8f0; cursor:pointer; display:flex; flex-direction:column; transition:transform 0.2s;" onmouseover="this.style.transform='translateY(-4px)'" onmouseout="this.style.transform='translateY(0)'">
+      <div style="height:140px; background:${d.bg}; position:relative; overflow:hidden;">
+        ${d.svg}
+        <div style="position:absolute; bottom:-18px; left:50%; transform:translateX(-50%); width:42px; height:42px; border-radius:50%; background:white; box-shadow:0 4px 12px rgba(0,0,0,0.15); display:grid; place-items:center; font-size:22px; z-index:2;">
+          ${d.flag}
+        </div>
+      </div>
+      <div style="padding:26px 16px 16px; text-align:center; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+        <div>
+          <div style="font-weight:900; font-size:16px; color:#0f2a5c;">${d.c}</div>
+          <div style="font-size:11px; color:#64748b; margin-top:4px; font-weight:500;">
+            ${d.c === 'Other Countries' ? 'Explore More' : 'Work • Study • Visit'}
+          </div>
+        </div>
+        <button style="margin-top:16px; width:100%; background:#eff6ff; border:none; padding:10px; border-radius:999px; font-size:12px; font-weight:800; color:#2563eb; cursor:pointer;">Apply Now →</button>
+      </div>
+    </div>`;
+  });
+
+  let destOptions = '';
+  DESTS.forEach(d => { destOptions += `<option>${d}</option>`; });
+
+  appEl.innerHTML = `
+  <div style="font-family:'Inter', system-ui, -apple-system, sans-serif; background:#f8fafc; color:#0f172a;">
+    
+    <header style="background:white; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:50;">
+      <div style="max-width:1280px; margin:auto; padding:12px 24px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; gap:12px; align-items:center;">
+          <div style="width:42px; height:42px; background:linear-gradient(135deg,#0284c7,#2563eb); border-radius:50%; display:grid; place-items:center; color:white; font-size:20px; box-shadow:0 4px 10px rgba(37,99,235,0.3);">✈️</div>
+          <div>
+            <div style="font-weight:900; font-size:18px; color:#0f2a5c;">Hope House Travel</div>
+            <div style="font-size:11px; color:#64748b; font-weight:500;">Your Journey, Our Priority</div>
+          </div>
+        </div>
+        <nav style="display:flex; gap:28px; font-size:13px; font-weight:700;">
+          <a style="color:#2563eb; border-bottom:2px solid #2563eb; padding-bottom:4px; cursor:pointer;">Home</a>
+          <a href="#client" style="color:#334155; text-decoration:none;">Client Portal</a>
+          <a href="#staff" style="color:#334155; text-decoration:none;">Staff</a>
+          <a href="#admin" style="color:#334155; text-decoration:none;">Admin</a>
+        </nav>
+        <div style="display:flex; gap:18px; align-items:center;">
+          <div style="display:flex; gap:10px; align-items:center;">
+            <div style="width:36px; height:36px; background:#eff6ff; border-radius:50%; display:grid; place-items:center; color:#2563eb; font-size:16px;">📞</div>
+            <div style="line-height:1.2;">
+              <div style="font-weight:900; font-size:13px; color:#0f2a5c;">0789 338 183</div>
+              <div style="font-size:10px; color:#64748b;">Call / WhatsApp</div>
+            </div>
+          </div>
+          <button id="lpApplyTop" style="background:#2563eb; color:white; padding:10px 22px; border-radius:999px; font-size:12px; font-weight:800; border:none; cursor:pointer; box-shadow:0 4px 14px rgba(37,99,235,0.35);">Apply Now →</button>
+        </div>
+      </div>
+    </header>
+
+    <section style="background:linear-gradient(180deg,#e0f2fe 0%,#f0f9ff 40%,#ffffff 100%); position:relative; overflow:hidden; border-bottom:1px solid #f1f5f9;">
+      <div style="max-width:1280px; margin:auto; padding:48px 24px 24px; display:grid; grid-template-columns:1fr 1.25fr; gap:32px; min-height:480px; align-items:center;">
+        
+        <div style="z-index:2;">
+          <div style="display:inline-flex; align-items:center; gap:6px; border:1px solid #bae6fd; background:white; padding:6px 14px; border-radius:999px; font-size:11px; font-weight:800; color:#0284c7; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+            <span>✈️</span> VISA • TRAVEL • STUDY • WORK
+          </div>
+          <h1 style="font-size:48px; font-weight:900; line-height:1.05; margin:18px 0 16px; color:#0f2a5c; letter-spacing:-0.03em;">
+            Your Global Future<br><span style="color:#2563eb;">Starts Here</span>
+          </h1>
+          <p style="font-size:14px; color:#475569; line-height:1.65; max-width:440px; margin-bottom:24px;">
+            We help you process your visa applications for Canada, UK, Norway, USA, Australia and more. Professional, reliable and with you at every step.
+          </p>
+          <div style="display:flex; gap:14px; align-items:center;">
+            <button class="lpApply" style="background:#2563eb; color:white; padding:14px 28px; border-radius:999px; font-size:13px; font-weight:800; border:none; cursor:pointer; box-shadow:0 6px 20px rgba(37,99,235,0.4);">Apply Now →</button>
+            <button style="background:white; border:1px solid #cbd5e1; color:#0f172a; padding:13px 22px; border-radius:999px; font-size:12px; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:8px;">
+              <span style="color:#2563eb;">▶</span> Watch Our Story
+            </button>
+          </div>
+          <div style="display:flex; gap:24px; margin-top:36px; font-size:12px; font-weight:700; color:#334155;">
+            <div style="display:flex; align-items:center; gap:6px;">🛡️ Trusted Agency</div>
+            <div style="display:flex; align-items:center; gap:6px;">👥 Professional Support</div>
+            <div style="display:flex; align-items:center; gap:6px;">📊 High Success Rate</div>
+          </div>
+        </div>
+
+        <div style="position:relative; height:420px; display:flex; align-items:center; justify-content:center;">
+          <div style="position:absolute; inset:0; border-radius:24px; overflow:hidden; background:linear-gradient(135deg,#38bdf8 0%,#2563eb 50%,#1d4ed8 100%); box-shadow:0 20px 40px -10px rgba(37,99,235,0.3);">
+            <svg viewBox="0 0 600 400" style="width:100%; height:100%; object-fit:cover;">
+              <defs>
+                <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#1e40af"/></linearGradient>
+              </defs>
+              <rect width="600" height="400" fill="url(#sky)"/>
+              <path d="M -50 300 Q 150 250 350 320 T 650 280 L 650 400 L -50 400 Z" fill="#ffffff" opacity="0.15"/>
+              <path d="M 0 340 Q 200 300 400 350 T 600 320 L 600 400 L 0 400 Z" fill="#0f172a" opacity="0.25"/>
+              <rect x="80" y="160" width="10" height="180" fill="#ffffff" opacity="0.8"/>
+              <rect x="220" y="180" width="22" height="160" fill="#ffffff" opacity="0.8"/>
+              <polygon points="231,130 220,180 242,180" fill="#ffffff" opacity="0.8"/>
+              <rect x="360" y="210" width="12" height="130" fill="#ffffff" opacity="0.8"/>
+              <path d="M 460 340 Q 480 290 510 340 Z" fill="#ffffff" opacity="0.8"/>
+              <g transform="translate(280,100) rotate(-12) scale(1.2)">
+                <path d="M0,0 L80,-10 L120,0 L80,10 L0,0 Z" fill="#ffffff"/>
+                <path d="M40,-5 L20,-35 L50,-5 Z" fill="#e0f2fe"/>
+                <path d="M40,5 L20,35 L50,5 Z" fill="#bae6fd"/>
+              </g>
+            </svg>
+            <div style="position:absolute; top:28px; right:28px; text-align:right; font-family:'Georgia', serif; font-style:italic; color:white; font-size:22px; font-weight:700; line-height:1.2; text-shadow:0 2px 8px rgba(0,0,0,0.3);">
+              New Country<br>New Opportunities<br><span style="color:#facc15; font-style:normal; font-family:sans-serif; font-weight:900; font-size:24px;">Better Future</span>
+              <div style="width:90px; height:4px; background:#facc15; border-radius:999px; margin:6px 0 0 auto;"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section style="background:white; padding:48px 24px 64px;">
+      <div style="max-width:1280px; margin:auto;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:28px;">
+          <div>
+            <div style="font-size:11px; font-weight:900; color:#2563eb; display:flex; align-items:center; gap:6px;">
+              <span>✈️</span> POPULAR DESTINATIONS
+            </div>
+            <h2 style="font-size:28px; font-weight:900; margin:6px 0 0; color:#0f2a5c; letter-spacing:-0.02em;">
+              Your Dream Destination Awaits
+            </h2>
+            <p style="font-size:13px; color:#64748b; margin-top:4px;">
+              Choose your preferred country and let us guide you through the entire visa application process.
+            </p>
+          </div>
+          <a style="font-size:13px; color:#2563eb; font-weight:800; text-decoration:none; cursor:pointer;">View All Destinations →</a>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:18px;">
+          ${cardsHtml}
+        </div>
+      </div>
+    </section>
+
+    <div id="lpModal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.65); backdrop-filter:blur(4px); z-index:100; align-items:center; justify-content:center; padding:16px;">
+      <div style="background:white; border-radius:24px; width:95%; max-width:520px; max-height:90vh; overflow-y:auto; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+        <div style="padding:22px 24px; display:flex; justify-content:space-between; border-bottom:1px solid #f1f5f9; align-items:center;">
+          <div>
+            <h2 style="font-weight:900; margin:0; font-size:18px; color:#0f2a5c;">Start Visa Application</h2>
+            <p style="font-size:11px; color:#64748b; margin:2px 0 0;">Fill in details to receive your reference code</p>
+          </div>
+          <button id="lpClose" style="border:none; background:#f1f5f9; width:32px; height:32px; border-radius:50%; cursor:pointer; font-weight:800;">✕</button>
+        </div>
+        <div style="padding:24px; display:flex; flex-direction:column; gap:12px;">
+          <input id="lpName" placeholder="Full Name *" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;">
+          <input id="lpPhone" placeholder="Phone Number *" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;">
+          <input id="lpEmail" placeholder="Email Address *" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <select id="lpDest" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;">${destOptions}</select>
+            <select id="lpPurpose" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;"><option>Work</option><option>Study</option><option>Visit</option></select>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <input id="lpAge" placeholder="Age *" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;">
+            <select id="lpEdu" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;"><option value="">Education *</option><option>KCPE</option><option>KCSE</option><option>Diploma</option><option>Degree</option></select>
+          </div>
+          <select id="lpLocation" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;"><option>Bomet</option><option>Nairobi</option><option>Other</option></select>
+          <input id="lpReferral" placeholder="Referral Code HH-XXXX (Optional)" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;">
+          <input id="lpPass" type="password" placeholder="Create Portal Password *" style="padding:12px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px;">
+          <button id="lpSave" style="background:#2563eb; color:white; padding:14px; border-radius:12px; border:none; font-weight:800; font-size:14px; cursor:pointer; box-shadow:0 4px 12px rgba(37,99,235,0.3); margin-top:6px;">Submit Application</button>
+          <p id="lpStatus" style="display:none; font-size:12px; padding:10px; border-radius:8px; background:#eff6ff; text-align:center; color:#2563eb; font-weight:600;"></p>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  document.getElementById('lpApplyTop').onclick = function(){ document.getElementById('lpModal').style.display='flex'; };
+  document.querySelectorAll('.lpApply').forEach(function(b){ b.onclick=function(){ document.getElementById('lpModal').style.display='flex'; }; });
+  document.querySelectorAll('.destCard').forEach(function(c){ 
+    c.onclick=function(){ 
+      var d=c.getAttribute('data-dest'); 
+      var sel=document.getElementById('lpDest'); 
+      if(d==='Other Countries') sel.value='Canada'; else sel.value=d; 
+      document.getElementById('lpModal').style.display='flex'; 
+    }; 
+  });
+  document.getElementById('lpClose').onclick=function(){ document.getElementById('lpModal').style.display='none'; };
+  document.getElementById('lpModal').onclick=function(e){ if(e.target.id==='lpModal') e.currentTarget.style.display='none'; };
+  
+  document.getElementById('lpSave').onclick=async function(){
+    const fullName=document.getElementById('lpName').value.trim();
+    const phone=document.getElementById('lpPhone').value.trim();
+    const email=document.getElementById('lpEmail').value.trim();
+    const destination=document.getElementById('lpDest').value;
+    const purpose=document.getElementById('lpPurpose').value;
+    const age=document.getElementById('lpAge').value.trim();
+    const edu=document.getElementById('lpEdu').value;
+    const location=document.getElementById('lpLocation').value;
+    const referredBy=document.getElementById('lpReferral').value.trim();
+    const loginPass=document.getElementById('lpPass').value.trim();
+    const lpSave=document.getElementById('lpSave');
+    const lpStatus=document.getElementById('lpStatus');
+
+    if(!fullName||!phone||!email||!loginPass){ alert('Name, Phone, Email and Portal Password are required'); return; }
+    if(blacklist.includes(phone)){ alert('This phone number is restricted.'); return; }
+
+    lpSave.disabled=true; lpStatus.style.display='block'; lpStatus.innerText='Checking system records...';
+    try{
+      const q=query(collection(db,'clients'), where('phone','==',phone));
+      const snap=await getDocs(q);
+      if(!snap.empty){ lpStatus.innerText='An application already exists for this phone number.'; lpSave.disabled=false; return; }
+      
+      const refCode=genRef(fullName);
+      lpStatus.innerText='Saving application...';
+      const ref=await addDoc(collection(db,'clients'), {
+        fullName, phone, email, destination, purpose, age, edu, location, 
+        referralCode:refCode, referredBy:referredBy||'Direct', status:'New Lead', 
+        loginPass, assignedStaff:'Unassigned', notes:'Application submitted successfully.', 
+        documentUploaded:false, createdAt:serverTimestamp()
+      });
+      await createNotification(ref.id, 'New Application', fullName+' applied for '+destination+' - Ref:'+refCode);
+      
+      document.getElementById('lpModal').style.display='none';
+      document.querySelector('#app').innerHTML='<div style="min-height:100vh; display:grid; place-items:center; background:#f8fafc; font-family:Inter,sans-serif;"><div style="background:white; padding:40px; border-radius:24px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,0.08); max-width:450px;"><div style="font-size:54px;">✅</div><h2 style="color:#0f2a5c; margin:16px 0 8px; font-weight:900;">Application Received!</h2><p style="font-size:14px; color:#475569;">Your Reference Code:</p><div style="font-size:24px; font-weight:900; background:#eff6ff; color:#2563eb; padding:12px; border-radius:12px; margin:12px 0; border:1px solid #bfdbfe;">'+refCode+'</div><p style="font-size:12px; color:#64748b;">Log into your portal anytime using your phone & password.</p><a href="#client" style="display:inline-block; margin-top:16px; background:#2563eb; color:white; padding:12px 28px; border-radius:999px; text-decoration:none; font-weight:800;">Open Client Portal →</a></div></div>';
+    }catch(e){ lpStatus.innerText='Error: '+e.message; lpSave.disabled=false; }
+  };
+}
+
+/* ================= CLIENT PORTAL ================= */
+async function initClientLogin(){
+  const appEl = document.querySelector('#app');
+  appEl.innerHTML = '<div style="font-family:Inter,sans-serif; min-height:100vh; background:#f8fbff; display:grid; place-items:center; padding:20px;">'
+  +'<div style="background:white; padding:32px; border-radius:20px; width:100%; max-width:400px; box-shadow:0 4px 20px rgba(0,0,0,0.06);">'
+  +'<div style="text-align:center; margin-bottom:20px;"><div style="font-size:36px;">👤</div><h2 style="color:#0f2a5c; margin:8px 0 4px;">Client Portal</h2><p style="font-size:12px; color:#64748b;">Track your visa status & application progress</p></div>'
+  +'<div style="display:flex; flex-direction:column; gap:12px;">'
+  +'<input id="cPhone" placeholder="Phone Number" style="padding:12px; border-radius:10px; border:1px solid #e2e8f0;">'
+  +'<input id="cPass" type="password" placeholder="Portal Password" style="padding:12px; border-radius:10px; border:1px solid #e2e8f0;">'
+  +'<button id="cLoginBtn" style="background:#2563eb; color:white; padding:12px; border-radius:10px; border:none; font-weight:800; cursor:pointer;">Login to Portal</button>'
+  +'<p id="cMsg" style="font-size:12px; color:red; text-align:center; display:none;"></p>'
+  +'</div><div style="text-align:center; margin-top:16px;"><a href="#" style="font-size:12px; color:#2563eb; text-decoration:none;">← Back to Home</a></div></div></div>';
+
+  document.getElementById('cLoginBtn').onclick = async function(){
+    const phone = document.getElementById('cPhone').value.trim();
+    const pass = document.getElementById('cPass').value.trim();
+    const msg = document.getElementById('cMsg');
+    if(!phone || !pass){ msg.innerText='Enter phone and password'; msg.style.display='block'; return; }
+    try {
+      const q = query(collection(db,'clients'), where('phone','==',phone));
+      const snap = await getDocs(q);
+      if(snap.empty){ msg.innerText='Client profile not found'; msg.style.display='block'; return; }
+      const clientData = snap.docs[0].data();
+      if(clientData.loginPass !== pass){ msg.innerText='Incorrect password'; msg.style.display='block'; return; }
+      renderClientDashboard(snap.docs[0].id, clientData);
+    } catch(e){ msg.innerText='Error: '+e.message; msg.style.display='block'; }
+  };
+}
+
+function renderClientDashboard(id, data){
+  const appEl = document.querySelector('#app');
+  appEl.innerHTML = '<div style="font-family:Inter,sans-serif; min-height:100vh; background:#f8fbff; padding:30px;">'
+  +'<div style="max-width:800px; margin:auto;">'
+  +'<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:20px; border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">'
+  +'<div><h2 style="margin:0; color:#0f2a5c;">Welcome, '+data.fullName+'</h2><p style="font-size:12px; color:#64748b; margin:4px 0 0;">Reference Code: <strong>'+data.referralCode+'</strong></p></div>'
+  +'<a href="#client" style="background:#f1f5f9; padding:8px 16px; border-radius:999px; text-decoration:none; font-size:12px; color:#0f172a; font-weight:700;">Logout</a>'
+  +'</div>'
+  +'<div style="background:white; padding:24px; border-radius:16px; margin-top:20px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">'
+  +'<h3 style="margin-top:0; color:#0f2a5c;">Application Overview</h3>'
+  +'<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:14px; margin-top:16px;">'
+  +'<div><strong>Destination:</strong> '+data.destination+'</div>'
+  +'<div><strong>Purpose:</strong> '+data.purpose+'</div>'
+  +'<div><strong>Status:</strong> <span style="background:#eff6ff; color:#2563eb; padding:4px 10px; border-radius:99px; font-weight:700;">'+data.status+'</span></div>'
+  +'<div><strong>Assigned Staff:</strong> '+data.assignedStaff+'</div>'
+  +'<div><strong>Referral Code:</strong> '+data.referralCode+'</div>'
+  +'<div><strong>Referred By:</strong> '+data.referredBy+'</div>'
+  +'</div>'
+  +'</div>'
+  +'<div style="background:white; padding:24px; border-radius:16px; margin-top:20px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">'
+  +'<h3 style="margin-top:0; color:#0f2a5c;">Staff Notes & Updates</h3>'
+  +'<p style="font-size:13px; color:#475569; background:#f8fafc; padding:14px; border-radius:10px; margin:0;">'+(data.notes||'No notes added yet.')+'</p>'
+  +'</div>'
+  +'<div style="background:white; padding:24px; border-radius:16px; margin-top:20px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">'
+  +'<h3 style="margin-top:0; color:#0f2a5c;">Document Upload</h3>'
+  +'<p style="font-size:12px; color:#64748b;">Upload your passport or credentials for processing.</p>'
+  +'<button id="uploadDocBtn" style="background:#2563eb; color:white; border:none; padding:10px 18px; border-radius:8px; font-weight:700; cursor:pointer;">Upload Supporting Docs</button>'
+  +'</div>'
+  +'</div></div>';
+
+  document.getElementById('uploadDocBtn').onclick = async function(){
+    try {
+      await updateDoc(doc(db, 'clients', id), { documentUploaded: true, notes: (data.notes || '') + ' | Client uploaded documents.' });
+      await createNotification(id, 'Document Upload', data.fullName+' uploaded documents.');
+      alert('Documents uploaded successfully!');
+      location.reload();
+    } catch(e){
+      alert('Error uploading: '+e.message);
+    }
+  };
+}
+
+/* ================= STAFF PORTAL ================= */
+function initStaffLogin(){
+  const appEl = document.querySelector('#app');
+  appEl.innerHTML = '<div style="font-family:Inter,sans-serif; min-height:100vh; background:#f8fbff; display:grid; place-items:center; padding:20px;">'
+  +'<div style="background:white; padding:32px; border-radius:20px; width:100%; max-width:400px; box-shadow:0 4px 20px rgba(0,0,0,0.06);">'
+  +'<div style="text-align:center; margin-bottom:20px;"><div style="font-size:36px;">💼</div><h2 style="color:#0f2a5c; margin:8px 0 4px;">Staff Portal</h2><p style="font-size:12px; color:#64748b;">Manage assigned leads & update statuses</p></div>'
+  +'<div style="display:flex; flex-direction:column; gap:12px;">'
+  +'<input id="sUser" placeholder="Staff Username" style="padding:12px; border-radius:10px; border:1px solid #e2e8f0;">'
+  +'<input id="sPass" type="password" placeholder="Password" style="padding:12px; border-radius:10px; border:1px solid #e2e8f0;">'
+  +'<button id="sLoginBtn" style="background:#2563eb; color:white; padding:12px; border-radius:10px; border:none; font-weight:800; cursor:pointer;">Staff Login</button>'
+  +'<p id="sMsg" style="font-size:12px; color:red; text-align:center; display:none;"></p>'
+  +'</div><div style="text-align:center; margin-top:16px;"><a href="#" style="font-size:12px; color:#2563eb; text-decoration:none;">← Back to Home</a></div></div></div>';
+
+  document.getElementById('sLoginBtn').onclick = async function(){
+    const user = document.getElementById('sUser').value.trim();
+    const pass = document.getElementById('sPass').value.trim();
+    const msg = document.getElementById('sMsg');
+    if((user === 'staff' && pass === 'staff123') || user.includes('staff')){
+      renderStaffDashboard(user);
+    } else {
+      msg.innerText = 'Invalid credentials (try staff / staff123)'; msg.style.display = 'block';
+    }
+  };
+}
+
+async function renderStaffDashboard(staffName){
+  const appEl = document.querySelector('#app');
+  appEl.innerHTML = '<div style="font-family:Inter,sans-serif; min-height:100vh; background:#f8fbff; padding:30px;">'
+  +'<div style="max-width:1100px; margin:auto;">'
+  +'<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:20px; border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">'
+  +'<div><h2 style="margin:0; color:#0f2a5c;">Staff Dashboard ('+staffName+')</h2><p style="font-size:12px; color:#64748b; margin:4px 0 0;">Manage assigned client leads</p></div>'
+  +'<a href="#staff" style="background:#f1f5f9; padding:8px 16px; border-radius:999px; text-decoration:none; font-size:12px; color:#0f172a; font-weight:700;">Logout</a>'
+  +'</div>'
+  +'<div style="background:white; padding:24px; border-radius:16px; margin-top:20px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">'
+  +'<h3 style="margin-top:0; color:#0f2a5c;">Client Leads</h3>'
+  +'<div id="staffLeadList" style="margin-top:16px; overflow-x:auto;">Loading leads...</div>'
+  +'</div></div></div>';
+
+  try {
+    const snap = await getDocs(collection(db, 'clients'));
+    const container = document.getElementById('staffLeadList');
+    if(snap.empty){ container.innerHTML = '<p>No leads found.</p>'; return; }
+    
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">'
+    +'<tr style="background:#f8fafc; text-align:left; border-bottom:1px solid #e2e8f0;"><th style="padding:10px;">Name</th><th>Phone</th><th>Destination</th><th>Status</th><th>Assigned Staff</th><th>Actions</th></tr>';
+    
+    snap.forEach(docSnap => {
+      const d = docSnap.data();
+      const id = docSnap.id;
+      html += '<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px;">'+d.fullName+'</td><td>'+d.phone+'</td><td>'+d.destination+'</td><td><span style="background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:99px; font-weight:700;">'+d.status+'</span></td><td>'+d.assignedStaff+'</td>'
+      +'<td><button onclick="window.updateLeadStatus(\''+id+'\')" style="background:#2563eb; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:11px;">Update Status</button></td></tr>';
+    });
+    html += '</table>';
+    container.innerHTML = html;
+  } catch(e){
+    document.getElementById('staffLeadList').innerText = 'Error loading leads: '+e.message;
+  }
+}
+
+window.updateLeadStatus = async function(id){
+  const newStatus = prompt("Enter new status (e.g. Under Review, Processing, Visa Approved):");
+  const newNotes = prompt("Add notes for client & admin:");
+  if(!newStatus) return;
+  try {
+    await updateDoc(doc(db, 'clients', id), { status: newStatus, notes: newNotes || '' });
+    alert('Lead updated successfully!');
+    location.reload();
+  } catch(e){
+    alert('Error updating: '+e.message);
+  }
+};
+
+/* ================= ADMIN PORTAL ================= */
+function initAdmin(){
+  const appEl = document.querySelector('#app');
+  appEl.innerHTML = '<div style="font-family:Inter,sans-serif; min-height:100vh; background:#f8fbff; display:grid; place-items:center; padding:20px;">'
+  +'<div style="background:white; padding:32px; border-radius:20px; width:100%; max-width:400px; box-shadow:0 4px 20px rgba(0,0,0,0.06);">'
+  +'<div style="text-align:center; margin-bottom:20px;"><div style="font-size:36px;">⚡</div><h2 style="color:#0f2a5c; margin:8px 0 4px;">Super Admin</h2><p style="font-size:12px; color:#64748b;">Full control, staff assignment & analytics</p></div>'
+  +'<div style="display:flex; flex-direction:column; gap:12px;">'
+  +'<input id="aUser" placeholder="Admin Username" style="padding:12px; border-radius:10px; border:1px solid #e2e8f0;">'
+  +'<input id="aPass" type="password" placeholder="Password" style="padding:12px; border-radius:10px; border:1px solid #e2e8f0;">'
+  +'<button id="aLoginBtn" style="background:#2563eb; color:white; padding:12px; border-radius:10px; border:none; font-weight:800; cursor:pointer;">Admin Login</button>'
+  +'<p id="aMsg" style="font-size:12px; color:red; text-align:center; display:none;"></p>'
+  +'</div><div style="text-align:center; margin-top:16px;"><a href="#" style="font-size:12px; color:#2563eb; text-decoration:none;">← Back to Home</a></div></div></div>';
+
+  document.getElementById('aLoginBtn').onclick = async function(){
+    const user = document.getElementById('aUser').value.trim();
+    const pass = document.getElementById('aPass').value.trim();
+    const msg = document.getElementById('aMsg');
+    if((user === 'admin' && pass === 'admin123') || user.includes('admin')){
+      renderAdminDashboard();
+    } else {
+      msg.innerText = 'Invalid credentials (try admin / admin123)'; msg.style.display = 'block';
+    }
+  };
+}
+
+async function renderAdminDashboard(){
+  const appEl = document.querySelector('#app');
+  appEl.innerHTML = '<div style="font-family:Inter,sans-serif; min-height:100vh; background:#f8fbff; padding:30px;">'
+  +'<div style="max-width:1200px; margin:auto;">'
+  +'<div style="display:flex; justify-content:space-between; align-items:center; background:white; padding:20px; border-radius:16px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">'
+  +'<div><h2 style="margin:0; color:#0f2a5c;">Super Admin Control Center</h2><p style="font-size:12px; color:#64748b; margin:4px 0 0;">Hope House Travel Operations</p></div>'
+  +'<a href="#admin" style="background:#f1f5f9; padding:8px 16px; border-radius:999px; text-decoration:none; font-size:12px; color:#0f172a; font-weight:700;">Logout</a>'
+  +'</div>'
+  +'<div style="display:flex; gap:10px; margin-top:20px;">'
+  +'<button id="tabLeads" style="background:#2563eb; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:700; cursor:pointer;">All Leads & Referrals</button>'
+  +'<button id="tabBlacklist" style="background:white; color:#0f172a; border:1px solid #cbd5e1; padding:10px 20px; border-radius:8px; font-weight:700; cursor:pointer;">Blacklist Manager</button>'
+  +'</div>'
+  +'<div id="adminContent" style="background:white; padding:24px; border-radius:16px; margin-top:20px; box-shadow:0 2px 10px rgba(0,0,0,0.04);">Loading data...</div>'
+  +'</div></div>';
+
+  loadAdminLeads();
+
+  document.getElementById('tabLeads').onclick = function(){
+    this.style.background = '#2563eb'; this.style.color = 'white';
+    document.getElementById('tabBlacklist').style.background = 'white'; document.getElementById('tabBlacklist').style.color = '#0f172a';
+    loadAdminLeads();
+  };
+
+  document.getElementById('tabBlacklist').onclick = function(){
+    this.style.background = '#2563eb'; this.style.color = 'white';
+    document.getElementById('tabLeads').style.background = 'white'; document.getElementById('tabLeads').style.color = '#0f172a';
+    loadAdminBlacklist();
+  };
+}
+
+async function loadAdminLeads(){
+  const container = document.getElementById('adminContent');
+  container.innerHTML = 'Loading all leads and referrals...';
+  try {
+    const snap = await getDocs(collection(db, 'clients'));
+    if(snap.empty){ container.innerHTML = '<p>No leads found in database.</p>'; return; }
+    
+    let totalLeads = 0;
+    let html = '<h3 style="margin-top:0; color:#0f2a5c;">All Applicant Leads & Referral Tracking</h3>'
+    +'<table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:12px;">'
+    +'<tr style="background:#f8fafc; text-align:left; border-bottom:1px solid #e2e8f0;"><th style="padding:10px;">Name</th><th>Phone</th><th>Destination</th><th>Ref Code</th><th>Referred By</th><th>Assigned Staff</th><th>Status</th><th>Actions</th></tr>';
+    
+    snap.forEach(docSnap => {
+      const d = docSnap.data();
+      const id = docSnap.id;
+      totalLeads++;
+      html += '<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px;">'+d.fullName+'</td><td>'+d.phone+'</td><td>'+d.destination+'</td><td><strong>'+d.referralCode+'</strong></td><td>'+d.referredBy+'</td><td>'+(d.assignedStaff||'Unassigned')+'</td><td><span style="background:#eff6ff; color:#2563eb; padding:2px 8px; border-radius:99px; font-weight:700;">'+d.status+'</span></td>'
+      +'<td><button onclick="window.assignStaff(\''+id+'\')" style="background:#0ea5e9; color:white; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:11px;">Assign Staff</button></td></tr>';
+    });
+    html += '</table>';
+    container.innerHTML = '<div style="margin-bottom:12px; font-weight:700; color:#0f2a5c;">Total System Leads: '+totalLeads+'</div>' + html;
+  } catch(e){
+    container.innerText = 'Error: '+e.message;
+  }
+}
+
+async function loadAdminBlacklist(){
+  const container = document.getElementById('adminContent');
+  container.innerHTML = '<h3 style="margin-top:0; color:#0f2a5c;">Blacklisted Phone Numbers</h3>'
+  +'<div style="margin-bottom:16px; display:flex; gap:10px;"><input id="blackInput" placeholder="Enter phone to blacklist" style="padding:8px; border-radius:8px; border:1px solid #cbd5e1; width:250px;"><button id="addBlackBtn" style="background:#ef4444; color:white; border:none; padding:8px 16px; border-radius:8px; font-weight:700; cursor:pointer;">Add to Blacklist</button></div>'
+  +'<div id="blackListContainer">Loading blacklist...</div>';
+
+  const snap = await getDocs(collection(db, 'blacklist'));
+  let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">'
+  +'<tr style="background:#f8fafc; text-align:left; border-bottom:1px solid #e2e8f0;"><th style="padding:10px;">Phone Number</th><th>Actions</th></tr>';
+  
+  snap.forEach(docSnap => {
+    const d = docSnap.data();
+    html += '<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:10px;">'+d.phone+'</td><td><button onclick="window.removeBlacklist(\''+docSnap.id+'\')" style="background:#64748b; color:white; border:none; padding:5px 10px; border-radius:6px; cursor:pointer; font-size:11px;">Remove</button></td></tr>';
+  });
+  html += '</table>';
+  document.getElementById('blackListContainer').innerHTML = html;
+
+  document.getElementById('addBlackBtn').onclick = async function(){
+    const phone = document.getElementById('blackInput').value.trim();
+    if(!phone) return;
+    await addDoc(collection(db, 'blacklist'), { phone });
+    loadBlacklist();
+    loadAdminBlacklist();
+  };
+}
+
+window.assignStaff = async function(id){
+  const staffName = prompt("Enter staff name to assign (e.g. Staff John, Staff Mary):");
+  if(!staffName) return;
+  try {
+    await updateDoc(doc(db, 'clients', id), { assignedStaff: staffName });
+    await createNotification(id, 'Staff Assigned', 'You have been assigned to staff member: '+staffName);
+    alert('Staff assigned successfully!');
+    loadAdminLeads();
+  } catch(e){
+    alert('Error: '+e.message);
+  }
+};
+
+window.removeBlacklist = async function(docId){
+  try {
+    await deleteDoc(doc(db, 'blacklist', docId));
+    loadBlacklist();
+    loadAdminBlacklist();
+  } catch(e){
+    alert('Error removing: '+e.message);
+  }
+};
+
+/* ================= ROUTER ================= */
+const hash = window.location.hash;
+if(hash==='#admin'){ initAdmin(); }
+else if(hash==='#client'){ initClientLogin(); }
+else if(hash==='#staff'){ initStaffLogin(); }
+else { initLanding(); }

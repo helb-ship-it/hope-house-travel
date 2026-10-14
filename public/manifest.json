@@ -1,0 +1,55 @@
+{
+  "name": "Hope House Travel - Your Journey, Our Priority",
+  "short_name": "HopeHouse",
+  "description": "Professional visa support for Canada, UK, Norway, USA, Australia and more. Apply, track, chat with staff.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "any",
+  "background_color": "#eef6ff",
+  "theme_color": "#2563eb",
+  "lang": "en-KE",
+  "categories": ["travel", "business", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Apply Now",
+      "url": "/#apply",
+      "description": "Start visa application",
+      "icons": [{"src": "/icon-192.png", "sizes": "192x192"}]
+    },
+    {
+      "name": "Client Login",
+      "url": "/#login",
+      "description": "Login to track application"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ]
+}

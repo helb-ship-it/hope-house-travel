@@ -1,0 +1,19 @@
+import { EDU_OPTIONS } from '../../constants/education.js';
+
+export function getStep1Html(ageOptions){
+  let eduHtml='<option value="">Education Level *</option>'; EDU_OPTIONS.forEach(o=>{ eduHtml+=`<option>${o}</option>`; });
+  return `
+    <h2 style="font-size:18px; font-weight:900; margin:0;">Step 1 — Applicant Details *</h2>
+    <p style="font-size:11px; opacity:0.6; margin:6px 0 16px;">DOB auto Age 19-41, Gender, Phone allows +, Education 14 options, Field, Marital, Next of Kin</p>
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="lpName" placeholder="Full Name * As per ID/Passport" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"><input id="lpDob" type="date" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;"><select id="lpAge" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px; background:white;">${ageOptions}</select><select id="lpGender" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px; background:white;"><option value="">Gender *</option><option>Male</option><option>Female</option><option>Other</option><option>Prefer Not to Say</option></select><input id="lpIdPass" placeholder="National ID / Passport No" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="lpPhone" placeholder="Phone * 07.../+254... (Allows +)" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"><input id="lpAltPhone" placeholder="Alternative Phone" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"></div>
+      <input id="lpEmail" placeholder="Email *" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><select id="lpEdu" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px; background:white;">${eduHtml}</select><input id="lpField" placeholder="Field of Study / Profession" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><select id="lpMarital" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px; background:white;"><option value="">Marital Status</option><option>Single</option><option>Married</option><option>Divorced</option><option>Widowed</option></select><input id="lpResidence" placeholder="Current Residence - Village / Estate" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"></div>
+      <div style="background:#f8fafc; border:1px solid #eef2f7; border-radius:12px; padding:12px;"><div style="font-size:11px; font-weight:800; margin-bottom:8px;">Next of Kin</div><div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="lpKinName" placeholder="Next of Kin Name" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"><input id="lpKinPhone" placeholder="Next of Kin Phone" style="padding:12px; border-radius:12px; border:1px solid #e2e8f0; font-size:13px;"></div></div>
+    </div>
+    <button id="toStep2" style="width:100%; margin-top:18px; background:linear-gradient(90deg,#2563eb,#1e40af); color:white; padding:14px; border-radius:12px; border:none; font-weight:800; cursor:pointer;">Continue to Step 2 →</button>
+  `;
+}

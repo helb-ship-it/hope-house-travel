@@ -1,0 +1,547 @@
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, addDoc, getDocs, query, where, updateDoc, doc, serverTimestamp, onSnapshot, deleteDoc } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA8qmX9snL69hb_Vv59uFk5Oak9Vmv4hmA",
+  authDomain: "hope-house-travel.firebaseapp.com",
+  projectId: "hope-house-travel",
+  storageBucket: "hope-house-travel.firebasestorage.app",
+  messagingSenderId: "831184251484",
+  appId: "1:831184251484:web:59e26d5f0f32690144d499"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const STAFF_WA = "254789338183";
+const ADMIN_PASS = "Hope@2030";
+const genPass = (p='HH') => p + Math.floor(1000+Math.random()*9000);
+const genStaffPass = () => 'STAFF-HH' + Math.floor(1000+Math.random()*9000);
+
+const EMAILJS = { SERVICE_ID: "service_xxxxxx", TEMPLATE_ID: "template_xxxxxx", PUBLIC_KEY: "xxxxxxxxxx" };
+async function sendEmailAuto(to_email, to_name, password, destination, phone){
+  if(EMAILJS.SERVICE_ID.includes("xxxx")) return {ok:false};
+  try{
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({service_id: EMAILJS.SERVICE_ID, template_id: EMAILJS.TEMPLATE_ID, user_id: EMAILJS.PUBLIC_KEY, template_params:{to_email, to_name, password, destination, phone, login_link:"https://hope-house-travel.web.app/#client-login"}})
+    });
+    return {ok:res.ok};
+  }catch(e){ return {ok:false}; }
+}
+async function createNotification(clientId, title, message){
+  try{ await addDoc(collection(db,"notifications"), {clientId, title, message, read:false, createdAt:serverTimestamp()}); }catch(e){}
+}
+
+const STATUSES = ["New Lead","Login Created","Login Sent - Awaiting Docs","Docs Received","Interview Scheduled","Visa Processing","Visa Approved","Flown","Rejected"];
+const STAFF_ROLES = ["Admin","Manager","Agent","Docs Officer","Finance","Recruiter"];
+const DEPARTMENTS = ["Visa Processing","Documentation","Customer Support","Finance & Payments","Marketing","Recruitment & HR","Operations","IT Support","Legal","Management"];
+const DESTS = ["Canada","UK","Norway","USA","Australia","Germany","Sweden","Denmark","UAE - Dubai","Schengen","Finland","Netherlands"];
+const EDUCATION_OPTIONS = ["KCPE / Primary","KCSE / Secondary","Certificate","Diploma","Degree / Bachelor","Masters","PhD"];
+const KENYA_COUNTIES = ["Baringo","Bomet","Bungoma","Busia","Elgeyo Marakwet","Embu","Garissa","Homa Bay","Isiolo","Kajiado","Kakamega","Kericho","Kiambu","Kilifi","Kirinyaga","Kisii","Kisumu","Kitui","Kwale","Laikipia","Lamu","Machakos","Makueni","Mandera","Marsabit","Meru","Migori","Mombasa","Murang'a","Nairobi","Nakuru","Nandi","Narok","Nyamira","Nyandarua","Nyeri","Samburu","Siaya","Taita Taveta","Tana River","Tharaka Nithi","Trans Nzoia","Turkana","Uasin Gishu","Vihiga","Wajir","West Pokot","Other / Abroad"];
+
+const landingHTML = `
+<div style="font-family:Poppins,sans-serif; background:white; min-height:100vh;">
+<div style="max-width:1300px; margin:auto; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #eee;">
+<div style="display:flex; gap:10px; align-items:center;"><div style="width:32px; height:32px; background:#0f1e3a; color:white; border-radius:50%; display:grid; place-items:center;">✈️</div><div><div style="font-weight:bold;">Hope House Travel</div><div style="font-size:10px; opacity:0.6;">0789 338 183 • Hazina Towers 5F</div></div></div>
+<div style="display:flex; gap:10px;"><a href="#client-login" style="border:1px solid #ddd; padding:8px 14px; border-radius:999px; font-size:12px; text-decoration:none; color:black;">Client Login</a><a href="#staff-login" style="border:1px solid #ddd; padding:8px 14px; border-radius:999px; font-size:12px; text-decoration:none; color:black;">Staff Login</a><button id="lpApplyTop" style="background:#2563eb; color:white; padding:8px 16px; border-radius:999px; font-size:12px; border:none; cursor:pointer;">Apply Now →</button></div>
+</div>
+<div style="max-width:1300px; margin:auto; padding:48px 24px; display:grid; grid-template-columns:1fr 1fr; gap:32px;">
+<div><div style="font-size:10px; font-weight:bold; background:#eff6ff; color:#2563eb; display:inline-block; padding:4px 10px; border-radius:999px;">VISA • WORK • STUDY</div><h1 style="font-size:42px; font-weight:800; line-height:1.05; margin:16px 0;">Your Global Future<br><span style="color:#2563eb;">Starts Here</span></h1><button class="lpApply" style="margin-top:20px; background:#2563eb; color:white; padding:12px 22px; border-radius:999px; border:none; cursor:pointer;">Apply Now →</button></div>
+<img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=800" style="width:100%; height:380px; object-fit:cover; border-radius:20px;">
+</div>
+<div style="max-width:1300px; margin:auto; padding:0 24px 40px;"><div style="display:grid; grid-template-columns:repeat(6,1fr); gap:12px;">${DESTS.slice(0,6).map(d=>`<div style="border:1px solid #eee; border-radius:12px; padding:12px; text-align:center;"><div style="font-weight:bold; font-size:12px;">${d}</div><button data-dest="${d}" class="lpApply" style="margin-top:8px; background:#0f1e3a; color:white; border:none; padding:6px 12px; border-radius:999px; font-size:10px; cursor:pointer;">Apply →</button></div>`).join('')}</div></div>
+</div>
+<div id="lpModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100; align-items:center; justify-content:center; padding:16px;"><div style="background:white; border-radius:16px; width:95%; max-width:500px; max-height:92vh; overflow:auto;"><div style="padding:20px; border-bottom:1px solid #eee;"><h2 style="font-weight:bold; margin:0;">Apply Now</h2></div><div style="padding:20px; display:flex; flex-direction:column; gap:12px;"><input id="lpName" placeholder="Full Name *" style="border:1px solid #ddd; padding:12px; border-radius:12px;"><input id="lpPhone" placeholder="Phone *" style="border:1px solid #ddd; padding:12px; border-radius:12px;"><input id="lpEmail" placeholder="Email *" style="border:1px solid #ddd; padding:12px; border-radius:12px;"><div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"><select id="lpDest" style="border:1px solid #ddd; padding:12px; border-radius:12px;">${DESTS.map(d=>`<option>${d}</option>`).join('')}</select><select id="lpPurpose" style="border:1px solid #ddd; padding:12px; border-radius:12px;"><option>Work</option><option>Study</option><option>Visit</option></select></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"><input id="lpAge" type="number" placeholder="Age *" style="border:1px solid #ddd; padding:12px; border-radius:12px;"><select id="lpEdu" style="border:1px solid #ddd; padding:12px; border-radius:12px;"><option value="">Education *</option>${EDUCATION_OPTIONS.map(o=>`<option>${o}</option>`).join('')}</select></div><select id="lpLocation" style="border:1px solid #ddd; padding:12px; border-radius:12px;"><option value="">Location *</option>${KENYA_COUNTIES.map(c=>`<option>${c}</option>`).join('')}</select><button id="lpSave" style="width:100%; background:#2563eb; color:white; padding:14px; border-radius:12px; font-weight:bold; border:none; cursor:pointer;">Submit →</button><button id="lpClose" style="width:100%; background:#f3f4f6; padding:10px; border-radius:12px; border:none;">Cancel</button><p id="lpStatus" style="display:none; text-align:center; font-size:11px; color:#2563eb;">Submitting...</p></div></div></div>
+`;
+
+const clientLoginHTML = `
+<div style="min-height:100vh; background:#f5f7fb; display:grid; place-items:center; padding:24px; font-family:Poppins,sans-serif;">
+<div style="background:white; padding:32px; border-radius:16px; width:100%; max-width:400px; border:1px solid #eee;">
+<div style="width:48px; height:48px; background:#0f1e3a; color:white; border-radius:50%; display:grid; place-items:center; margin:auto;">👤</div>
+<h2 style="text-align:center; font-weight:bold; font-size:20px; margin-top:12px;">Client Login</h2>
+<input id="clPhone" placeholder="Email or Phone" style="margin-top:20px; width:100%; border:1px solid #ddd; padding:12px; border-radius:12px;">
+<input id="clPass" type="password" placeholder="Password" style="margin-top:12px; width:100%; border:1px solid #ddd; padding:12px; border-radius:12px;">
+<button id="clLogin" style="margin-top:16px; width:100%; background:#0f1e3a; color:white; padding:12px; border-radius:12px; font-weight:bold; border:none; cursor:pointer;">Login</button>
+<button id="forgotBtn" style="margin-top:12px; width:100%; background:transparent; border:none; color:#2563eb; font-size:12px; text-decoration:underline; cursor:pointer;">Forgot Password? Email reset</button>
+<p id="clErr" style="display:none; text-align:center; font-size:12px; margin-top:12px; padding:8px; border-radius:8px;"></p>
+</div>
+</div>
+<div id="forgotModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; place-items:center; padding:16px;"><div style="background:white; padding:24px; border-radius:16px; width:100%; max-width:380px;"><h3 style="font-weight:bold; margin:0;">Reset Password</h3><input id="forgotEmail" placeholder="your email" style="margin-top:16px; width:100%; border:1px solid #ddd; padding:12px; border-radius:12px;"><button id="sendReset" style="margin-top:16px; width:100%; background:#2563eb; color:white; padding:12px; border-radius:12px; font-weight:bold; border:none; cursor:pointer;">Send New Password to Email</button><button onclick="document.getElementById('forgotModal').style.display='none'" style="margin-top:8px; width:100%; background:#f3f4f6; padding:10px; border-radius:12px; border:none;">Close</button><p id="forgotStatus" style="font-size:11px; text-align:center; margin-top:12px;"></p></div></div>
+`;
+
+const staffLoginHTML = `
+<div style="min-height:100vh; background:#f5f7fb; display:grid; place-items:center; padding:24px; font-family:Poppins,sans-serif;">
+<div style="background:white; padding:32px; border-radius:16px; width:100%; max-width:400px; border:1px solid #eee;">
+<h2 style="text-align:center; font-weight:bold; font-size:20px;">Staff Login</h2><p style="text-align:center; font-size:11px; opacity:0.6;">Role-based dashboard</p>
+<input id="stEmail" placeholder="Staff Email" style="margin-top:20px; width:100%; border:1px solid #ddd; padding:12px; border-radius:12px;">
+<input id="stPass" type="password" placeholder="Password" style="margin-top:12px; width:100%; border:1px solid #ddd; padding:12px; border-radius:12px;">
+<button id="stLogin" style="margin-top:16px; width:100%; background:#0f1e3a; color:white; padding:12px; border-radius:12px; font-weight:bold; border:none; cursor:pointer;">Login as Staff</button>
+<p id="stErr" style="display:none; text-align:center; font-size:12px; margin-top:12px; padding:8px; border-radius:8px;"></p>
+</div>
+</div>
+`;
+
+const dashboardHTML = `
+<div style="display:flex; min-height:100vh; background:#f5f7fb; font-family:Poppins, sans-serif;">
+<div style="width:260px; background:#0f1e3a; color:white; position:fixed; height:100%; padding:20px; display:flex; flex-direction:column; z-index:10;">
+<div style="display:flex; gap:10px; align-items:center;"><div style="width:32px; height:32px; background:white; color:#0f1e3a; border-radius:50%; display:grid; place-items:center; font-weight:bold;">HH</div><div><div style="font-weight:bold; font-size:14px;">Hope House Travel</div><div style="font-size:10px; opacity:0.6;">Admin Panel</div></div></div>
+<nav style="margin-top:28px; display:flex; flex-direction:column; gap:6px;">
+<button data-tab="overview" class="tabBtn" style="width:100%; text-align:left; padding:11px 16px; border-radius:12px; background:white; color:black; font-weight:bold; font-size:13px; border:none; cursor:pointer;">📊 Overview</button>
+<button data-tab="clients" class="tabBtn" style="width:100%; text-align:left; padding:11px 16px; border-radius:12px; background:transparent; color:white; font-size:13px; border:none; cursor:pointer;">👥 Live Clients <span id="tabCountClients" style="float:right; background:rgba(255,255,255,0.2); padding:2px 8px; border-radius:10px; font-size:11px;">0</span></button>
+<button data-tab="staff" class="tabBtn" style="width:100%; text-align:left; padding:11px 16px; border-radius:12px; background:transparent; color:white; font-size:13px; border:none; cursor:pointer;">🧑‍💼 Staff Management</button>
+<button data-tab="recruit" class="tabBtn" style="width:100%; text-align:left; padding:11px 16px; border-radius:12px; background:transparent; color:white; font-size:13px; border:none; cursor:pointer;">📢 Recruit Staff</button>
+<button data-tab="payments" class="tabBtn" style="width:100%; text-align:left; padding:11px 16px; border-radius:12px; background:transparent; color:white; font-size:13px; border:none; cursor:pointer;">💰 Payments</button>
+<button data-tab="reports" class="tabBtn" style="width:100%; text-align:left; padding:11px 16px; border-radius:12px; background:transparent; color:white; font-size:13px; border:none; cursor:pointer;">📈 Reports</button>
+</nav>
+<div style="margin-top:auto; display:flex; flex-direction:column; gap:10px;"><button id="backHome" style="background:transparent; color:white; border:none; text-decoration:underline; font-size:12px; text-align:left; cursor:pointer; opacity:0.6;">← Website</button><button id="logoutBtn" style="width:100%; background:rgba(255,255,255,0.1); color:white; border:none; padding:10px; border-radius:10px; font-size:12px; cursor:pointer;">Logout</button></div>
+</div>
+<div style="margin-left:260px; flex:1; padding:24px;">
+<div style="display:flex; justify-content:space-between; align-items:center;"><div><h1 style="font-size:24px; font-weight:bold; margin:0;">Admin Dashboard</h1><p style="font-size:11px; opacity:0.6; margin:0;">Super Admin - Full Access</p></div><div style="display:flex; gap:10px;"><button id="notifBellAdmin" style="position:relative; background:white; border:1px solid #e5e7eb; width:42px; height:42px; border-radius:50%; display:grid; place-items:center; cursor:pointer;">🔔<span id="notifCountAdmin" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:white; font-size:9px; width:18px; height:18px; border-radius:50%; display:grid; place-items:center;">0</span></button><button id="exportCsvBtn" style="background:black; color:white; padding:10px 16px; border-radius:999px; font-size:12px; border:none; cursor:pointer;">Export CSV</button></div></div>
+<div id="view-overview" class="tabView" style="margin-top:24px; display:block;">
+<div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px;">
+<div style="background:white; padding:20px; border-radius:16px; border:1px solid #e5e7eb;"><div style="font-size:11px; opacity:0.6;">Total Clients</div><div id="statTotal" style="font-size:32px; font-weight:bold; margin-top:4px;">0</div></div>
+<div style="background:white; padding:20px; border-radius:16px; border:1px solid #e5e7eb;"><div style="font-size:11px; opacity:0.6;">Canada</div><div id="statCanada" style="font-size:32px; font-weight:bold; margin-top:4px;">0</div></div>
+<div style="background:white; padding:20px; border-radius:16px; border:1px solid #e5e7eb;"><div style="font-size:11px; opacity:0.6;">Revenue</div><div id="statRev" style="font-size:32px; font-weight:bold; margin-top:4px;">0</div></div>
+<div style="background:white; padding:20px; border-radius:16px; border:1px solid #e5e7eb;"><div style="font-size:11px; opacity:0.6;">Total Staff</div><div id="statStaff" style="font-size:32px; font-weight:bold; margin-top:4px;">0</div></div>
+</div>
+<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px; margin-top:16px;">
+<div style="background:white; padding:20px; border-radius:16px; border:1px solid #e5e7eb;"><h3 style="font-weight:bold; font-size:13px; margin:0;">Status Pipeline</h3><div id="statusPipeline" style="margin-top:12px; display:flex; flex-direction:column; gap:8px;"></div></div>
+<div style="background:white; padding:20px; border-radius:16px; border:1px solid #e5e7eb;"><h3 style="font-weight:bold; font-size:13px; margin:0;">Top Locations</h3><div id="topLocations" style="margin-top:12px; display:flex; flex-direction:column; gap:8px; font-size:12px;"></div></div>
+<div style="background:white; padding:20px; border-radius:16px; border:1px solid #e5e7eb;"><h3 style="font-weight:bold; font-size:13px; margin:0;">🔔 Notifications</h3><div id="notifListAdmin" style="margin-top:12px; display:flex; flex-direction:column; gap:8px; font-size:11px; max-height:200px; overflow:auto;"></div></div>
+</div>
+</div>
+<div id="view-clients" class="tabView" style="display:none; margin-top:24px;"><div style="background:white; border-radius:16px; border:1px solid #e5e7eb; padding:20px;"><div style="display:flex; justify-content:space-between; gap:12px;"><h3 style="font-weight:bold; margin:0;">Live Clients</h3><div style="display:flex; gap:8px;"><select id="filterDest" style="border:1px solid #e5e7eb; border-radius:999px; padding:8px 12px; font-size:12px;"><option value="">All Destinations</option>${DESTS.map(d=>`<option>${d}</option>`).join('')}</select><select id="filterStatus" style="border:1px solid #e5e7eb; border-radius:999px; padding:8px 12px; font-size:12px;"><option value="">All Status</option>${STATUSES.map(s=>`<option>${s}</option>`).join('')}</select><input id="search" placeholder="Search..." style="border:1px solid #e5e7eb; padding:8px 14px; border-radius:999px; font-size:12px; width:240px;"></div></div><div style="overflow:auto; margin-top:16px;"><table style="width:100%; font-size:13px; border-collapse:collapse;"><thead style="font-size:11px; color:#9ca3af; border-bottom:1px solid #e5e7eb;"><tr><td style="padding:12px;">#</td><td style="padding:12px;">Name</td><td style="padding:12px;">Phone</td><td style="padding:12px;">Dest</td><td style="padding:12px;">Location</td><td style="padding:12px;">Status</td><td style="padding:12px;">Staff</td><td style="padding:12px;">Action</td></tr></thead><tbody id="tbody"></tbody></table></div></div></div>
+<div id="view-staff" class="tabView" style="display:none; margin-top:24px;"><div style="background:white; border-radius:16px; border:1px solid #e5e7eb; padding:20px;"><div style="display:flex; justify-content:space-between;"><h3 style="font-weight:bold; margin:0;">Staff Management</h3><button id="openRecruitModal" style="background:#2563eb; color:white; padding:8px 16px; border-radius:999px; font-size:12px; border:none; cursor:pointer;">+ Recruit</button></div><div style="overflow:auto; margin-top:16px;"><table style="width:100%; font-size:13px; border-collapse:collapse;"><thead style="font-size:11px; color:#9ca3af; border-bottom:1px solid #e5e7eb;"><tr><td style="padding:12px;">Staff</td><td style="padding:12px;">Role / Dept</td><td style="padding:12px;">Contact</td><td style="padding:12px;">Clients</td><td style="padding:12px;">Status</td><td style="padding:12px;">Action</td></tr></thead><tbody id="staffTbody"></tbody></table></div></div></div>
+<div id="view-recruit" class="tabView" style="display:none; margin-top:24px;">
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+<div style="background:white; border-radius:16px; border:1px solid #e5e7eb; padding:24px;"><h3 style="font-weight:bold; margin:0;">📢 Recruit New Staff</h3><p style="font-size:11px; opacity:0.6;">Department dropdown + Role based dashboard</p><div style="margin-top:18px; display:flex; flex-direction:column; gap:12px;">
+<input id="staffName" placeholder="Full Name *" style="width:100%; border:1px solid #e5e7eb; padding:12px; border-radius:12px;">
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><input id="staffEmail" placeholder="Email *" style="border:1px solid #e5e7eb; padding:12px; border-radius:12px;"><input id="staffPhone" placeholder="Phone *" style="border:1px solid #e5e7eb; padding:12px; border-radius:12px;"></div>
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><select id="staffRole" style="border:1px solid #e5e7eb; padding:12px; border-radius:12px;">${STAFF_ROLES.map(r=>`<option>${r}</option>`).join('')}</select><input id="staffId" placeholder="ID Number" style="border:1px solid #e5e7eb; padding:12px; border-radius:12px;"></div>
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><select id="staffDept" style="border:1px solid #e5e7eb; padding:12px; border-radius:12px;"><option value="">Select Department *</option>${DEPARTMENTS.map(d=>`<option>${d}</option>`).join('')}</select><div style="display:flex; gap:8px;"><input id="staffPass" placeholder="Password auto" style="flex:1; border:1px solid #e5e7eb; padding:12px; border-radius:12px; font-family:monospace;"><button id="genStaffPass" style="background:black; color:white; padding:0 16px; border-radius:12px; border:none; cursor:pointer;">Gen</button></div></div>
+<button id="createStaffBtn" style="width:100%; background:#0f1e3a; color:white; padding:14px; border-radius:12px; font-weight:bold; border:none; cursor:pointer;">Create Staff + Email + WhatsApp</button><div id="staffStatus" style="display:none; font-size:11px; padding:10px; border-radius:8px;"></div></div></div>
+<div style="background:linear-gradient(135deg,#2563eb,#0f1e3a); color:white; border-radius:16px; padding:24px;"><h3 style="font-weight:bold; margin:0;">Role Dashboards</h3><ul style="font-size:12px; margin-top:16px; line-height:1.9;"><li>👔 <b>Manager:</b> All clients, assign, pipeline, approve</li><li>🧑‍💼 <b>Admin Staff:</b> Assigned + status update</li><li>🧑‍💻 <b>Agent:</b> My clients only + create login</li><li>📄 <b>Docs Officer:</b> Docs checklist + request docs</li><li>💰 <b>Finance:</b> Payments + M-Pesa verify</li><li>📢 <b>Recruiter:</b> Recruit + staff list</li></ul><div style="margin-top:24px; background:rgba(255,255,255,0.15); padding:14px; border-radius:12px; font-size:11px;">Login: <b>hope-house-travel.web.app/#staff-login</b></div></div>
+</div>
+</div>
+<div id="view-payments" class="tabView" style="display:none; margin-top:24px;"><div style="background:white; border-radius:16px; border:1px solid #e5e7eb; padding:20px;"><h3 style="font-weight:bold;">M-Pesa Payments</h3><div id="paymentsList" style="margin-top:12px; font-size:12px;">Coming soon</div></div></div>
+<div id="view-reports" class="tabView" style="display:none; margin-top:24px;"><div style="background:white; border-radius:16px; border:1px solid #e5e7eb; padding:20px;"><h3 style="font-weight:bold;">Reports</h3><div id="reportsStats" style="margin-top:12px; font-size:12px;">Export CSV</div></div></div>
+</div>
+</div>
+<div id="reqModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100; align-items:center; justify-content:center; padding:16px;"><div style="background:white; border-radius:16px; width:100%; max-width:580px; max-height:92vh; overflow:hidden; display:flex; flex-direction:column;"><div style="padding:20px; border-bottom:1px solid #e5e7eb; background:#f9fafb;"><h2 id="reqClientName" style="font-weight:bold; font-size:18px; margin:0;">Client</h2><p id="reqDestPurpose" style="font-size:11px; opacity:0.6; margin:4px 0 0;"></p></div><div style="flex:1; overflow:auto; padding:20px;"><div style="background:#eff6ff; border:1px solid #bfdbfe; padding:16px; border-radius:12px;"><h3 style="font-weight:bold; font-size:13px; color:#1e3a8a; margin:0 0 12px;">🔑 Create Credentials</h3><input id="credName" disabled style="width:100%; border:1px solid #e5e7eb; padding:10px; border-radius:10px; background:#f3f4f6;"><div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;"><input id="credPhone" style="border:1px solid #e5e7eb; padding:10px; border-radius:10px;" placeholder="Phone"><input id="credLocation" disabled style="border:1px solid #e5e7eb; padding:10px; border-radius:10px; background:#f3f4f6;"></div><input id="credEmail" placeholder="Email *" style="width:100%; border:1px solid #e5e7eb; padding:10px; border-radius:10px; margin-top:12px;"><div style="display:flex; gap:8px; margin-top:12px;"><input id="credPass" placeholder="HH1234" style="flex:1; border:1px solid #e5e7eb; padding:10px; border-radius:10px; font-family:monospace;"><button id="genPassBtn" style="background:black; color:white; padding:0 16px; border-radius:10px; border:none; cursor:pointer;">Generate</button></div><div style="margin-top:12px;"><label style="font-size:11px; font-weight:bold;">Assign to Staff</label><select id="credAssignStaff" style="width:100%; border:1px solid #e5e7eb; padding:10px; border-radius:10px; margin-top:4px;"></select></div><div style="margin-top:12px;"><label style="font-size:11px; font-weight:bold;">Status</label><select id="credStatusSelect" style="width:100%; border:1px solid #e5e7eb; padding:10px; border-radius:10px; margin-top:4px;">${STATUSES.map(s=>`<option>${s}</option>`).join('')}</select></div><div id="credStatus" style="display:none; margin-top:12px; padding:10px; border-radius:8px; font-size:11px;"></div></div></div><div style="padding:16px; border-top:1px solid #e5e7eb; display:flex; flex-direction:column; gap:8px;"><button id="saveCredsBtn" style="width:100%; background:#0f1e3a; color:white; padding:12px; border-radius:10px; font-weight:bold; border:none; cursor:pointer;">💾 Save + 📧 Email + 🔔</button><button id="sendCredsBtn" style="width:100%; background:#25D366; color:white; padding:12px; border-radius:10px; font-weight:bold; border:none; cursor:pointer;">📱 Save + Email + WhatsApp + Bell</button><button onclick="document.getElementById('reqModal').style.display='none'" style="width:100%; background:#f3f4f6; padding:10px; border-radius:10px; border:none; cursor:pointer;">Close</button></div></div></div>
+`;
+
+let allClients=[], allStaff=[];
+
+async function load(){
+  try{
+    const snap=await getDocs(collection(db,"clients"));
+    allClients=[]; snap.forEach(d=>allClients.push({id:d.id,...d.data()}));
+    allClients.sort((a,b)=> (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+  }catch(e){ allClients=[]; }
+  try{
+    const staffSnap=await getDocs(collection(db,"staffs"));
+    allStaff=[]; staffSnap.forEach(d=>allStaff.push({id:d.id,...d.data()}));
+  }catch(e){ allStaff=[]; }
+  const el=id=>document.getElementById(id);
+  if(el('statTotal')) el('statTotal').innerText=allClients.length;
+  if(el('tabCountClients')) el('tabCountClients').innerText=allClients.length;
+  if(el('statCanada')) el('statCanada').innerText=allClients.filter(c=> (c.destination||'').toLowerCase().includes('canada')).length;
+  if(el('statStaff')) el('statStaff').innerText=allStaff.length;
+  if(el('statRev')) el('statRev').innerText='KES '+(allClients.length*1500).toLocaleString();
+  const pipe=document.getElementById('statusPipeline');
+  if(pipe) pipe.innerHTML= STATUSES.map(s=>{ const cnt=allClients.filter(c=>c.status===s).length; return `<div style="display:flex; justify-content:space-between; font-size:11px; padding:10px; border:1px solid #e5e7eb; border-radius:10px; background:${cnt>0?'#eff6ff':'white'}"><span>${s}</span><b>${cnt}</b></div>`; }).join('');
+  const top=document.getElementById('topLocations');
+  if(top){ const map={}; allClients.forEach(c=>{ const l=c.location||'N/A'; map[l]=(map[l]||0)+1; }); const entries=Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,5); top.innerHTML= entries.length? entries.map(([l,cnt])=>`<div style="display:flex; justify-content:space-between; padding:10px; border:1px solid #e5e7eb; border-radius:10px;"><span>📍 ${l}</span><b>${cnt}</b></div>`).join('') : '<div style="opacity:0.5;">No data</div>'; }
+  renderClients(allClients);
+  renderStaff(allStaff);
+  loadStaffOptions();
+}
+function safe(v,f='N/A'){ return (v && v!=='' && v!=='undefined')? v : f; }
+function renderClients(list){
+  const tb=document.getElementById('tbody'); if(!tb) return;
+  if(!list.length){ tb.innerHTML='<tr><td colspan="8" style="padding:40px; text-align:center; opacity:0.5;">No clients</td></tr>'; return; }
+  tb.innerHTML=list.map((c,i)=>`
+  <tr style="border-top:1px solid #f3f4f6;">
+    <td style="padding:12px; font-size:12px;">${i+1}</td>
+    <td style="padding:12px;"><div style="font-weight:bold; font-size:13px;">${c.fullName}</div><div style="font-size:11px; opacity:0.6;">${c.email||''}</div></td>
+    <td style="padding:12px; font-size:12px;">${c.phone||''}</td>
+    <td style="padding:12px; font-size:11px;"><span style="background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px;">${safe(c.destination,'N/A')}</span></td>
+    <td style="padding:12px; font-size:11px;">📍 ${safe(c.location,'N/A')}</td>
+    <td style="padding:12px;"><select onchange="window.updateStatus('${c.id}', this.value)" style="font-size:11px; border:1px solid #e5e7eb; border-radius:999px; padding:4px 8px;"><option>${safe(c.status,'New Lead')}</option>${STATUSES.map(s=>`<option ${c.status===s?'selected':''}>${s}</option>`).join('')}</select></td>
+    <td style="padding:12px; font-size:11px;">${c.assignedStaffName? `<b>${c.assignedStaffName}</b>` : '<span style="opacity:0.4;">Unassigned</span>'}</td>
+    <td style="padding:12px;"><button onclick="window.openDocs('${c.id}')" style="background:black; color:white; padding:6px 12px; border-radius:999px; font-size:10px; border:none; cursor:pointer;">Create Login</button></td>
+  </tr>`).join('');
+}
+function renderStaff(list){
+  const tb=document.getElementById('staffTbody'); if(!tb) return;
+  if(!list.length){ tb.innerHTML='<tr><td colspan="6" style="padding:40px; text-align:center; opacity:0.5;">No staff yet</td></tr>'; return; }
+  tb.innerHTML=list.map(s=>`
+  <tr style="border-top:1px solid #f3f4f6;">
+    <td style="padding:12px;"><div style="font-weight:bold; font-size:13px;">${s.fullName}</div><div style="font-size:10px; opacity:0.6;">ID:${s.idNumber||'N/A'}</div></td>
+    <td style="padding:12px;"><span style="background:#f5f3ff; color:#6d28d9; padding:4px 8px; border-radius:999px; font-size:11px;">${s.role}</span><div style="font-size:10px; opacity:0.6; margin-top:4px;">📁 ${s.department||'N/A'}</div></td>
+    <td style="padding:12px; font-size:11px;">${s.email}<br>${s.phone}</td>
+    <td style="padding:12px; font-size:11px;"><b>${allClients.filter(c=>c.assignedStaffId===s.id).length}</b> clients</td>
+    <td style="padding:12px;"><span style="background:#dcfce7; color:#16a34a; padding:4px 8px; border-radius:999px; font-size:10px;">Active</span></td>
+    <td style="padding:12px;"><button onclick="window.deleteStaff('${s.id}')" style="font-size:10px; background:#fef2f2; color:#dc2626; padding:4px 8px; border-radius:999px; border:none; cursor:pointer;">Remove</button> <button onclick="window.waStaff('${s.id}')" style="font-size:10px; background:#dcfce7; color:#16a34a; padding:4px 8px; border-radius:999px; border:none; cursor:pointer; margin-left:4px;">WA</button></td>
+  </tr>`).join('');
+}
+function loadStaffOptions(){
+  const sel=document.getElementById('credAssignStaff'); if(!sel) return;
+  sel.innerHTML='<option value="">Unassigned - Admin handles</option>'+allStaff.map(s=>`<option value="${s.id}">${s.fullName} - ${s.role} (${s.department||''})</option>`).join('');
+}
+window.updateStatus=async(id,status)=>{ try{ await updateDoc(doc(db,"clients",id), {status, updatedAt:serverTimestamp()}); await createNotification(id, "Status Updated", `Status changed to ${status}`); load(); }catch(e){ alert(e.message); } };
+window.deleteStaff=async(id)=>{ if(!confirm('Remove staff?')) return; await deleteDoc(doc(db,"staffs",id)); load(); };
+window.waStaff=(id)=>{ const s=allStaff.find(x=>x.id===id); if(!s) return; let p=s.phone.replace(/[^0-9]/g,''); if(p.startsWith('0')) p='254'+p.substring(1); window.open('https://wa.me/'+p,'_blank'); };
+window.openDocs=(id)=>{
+  const c=allClients.find(x=>x.id===id); if(!c) return;
+  document.getElementById('reqClientName').innerText=c.fullName;
+  document.getElementById('reqDestPurpose').innerText=`${safe(c.destination,'N/A')} - ${safe(c.purpose,'Work')} | ${c.phone}`;
+  document.getElementById('credName').value=c.fullName;
+  document.getElementById('credPhone').value=c.phone||'';
+  document.getElementById('credLocation').value=`${safe(c.location,'N/A')} | Age:${safe(c.age,'N/A')}`;
+  document.getElementById('credEmail').value=c.email||'';
+  document.getElementById('credPass').value=c.loginPass|| genPass();
+  document.getElementById('credStatusSelect').value=c.status||'New Lead';
+  document.getElementById('credAssignStaff').value=c.assignedStaffId||'';
+  document.getElementById('reqModal').dataset.id=id;
+  document.getElementById('reqModal').style.display='flex';
+  document.getElementById('genPassBtn').onclick=()=> document.getElementById('credPass').value=genPass();
+  const saveData = async (withWhatsApp=false)=>{
+    const phone=document.getElementById('credPhone').value.trim();
+    const email=document.getElementById('credEmail').value.trim();
+    const pass=document.getElementById('credPass').value.trim();
+    const status=document.getElementById('credStatusSelect').value;
+    const assignId=document.getElementById('credAssignStaff').value;
+    const assignName=assignId? (allStaff.find(s=>s.id===assignId)?.fullName||'') : '';
+    const st=document.getElementById('credStatus');
+    if(!phone||!email||!pass){ st.style.display='block'; st.innerText='Phone, Email, Pass required'; st.style.background='#fef2f2'; st.style.color='#dc2626'; return; }
+    st.style.display='block'; st.innerText='Saving...'; st.style.background='#eff6ff'; st.style.color='#2563eb';
+    try{
+      await updateDoc(doc(db,"clients",id), {phone, email, loginPass:pass, status, assignedStaffId:assignId, assignedStaffName:assignName, lastLoginCreated:serverTimestamp()});
+      await sendEmailAuto(email, c.fullName, pass, c.destination, phone);
+      await createNotification(id, "Login Created", `Login ready. Email:${email} Pass:${pass}. Staff:${assignName||'Admin'}`);
+      st.innerText=`✅ Saved! ${email} Pass:${pass} Staff:${assignName||'Admin'} + Bell`;
+      st.style.background='#dcfce7'; st.style.color='#166534';
+      load();
+      if(withWhatsApp){ let p=phone.replace(/[^0-9]/g,''); if(p.startsWith('0')) p='254'+p.substring(1); const msg=encodeURIComponent(`Hello ${c.fullName}! Hope House ✈️\n✅ LOGIN READY\nEmail:${email}\nPass:${pass}\nStaff:${assignName||'Admin'}\nLogin: https://hope-house-travel.web.app/#client-login`); window.open(`https://wa.me/${p}?text=${msg}`,'_blank'); }
+    }catch(err){ st.innerText='Error:'+err.message; st.style.background='#fef2f2'; st.style.color='#dc2626'; }
+  };
+  document.getElementById('saveCredsBtn').onclick=()=> saveData(false);
+  document.getElementById('sendCredsBtn').onclick=()=> saveData(true);
+};
+
+function initLanding(){
+  document.querySelector('#app').innerHTML=landingHTML;
+  document.getElementById('lpApplyTop').onclick=()=> document.getElementById('lpModal').style.display='flex';
+  document.querySelectorAll('.lpApply').forEach(b=> b.onclick=e=>{ const d=e.currentTarget.dataset.dest; if(d) document.getElementById('lpDest').value=d; document.getElementById('lpModal').style.display='flex'; });
+  document.getElementById('lpClose').onclick=()=> document.getElementById('lpModal').style.display='none';
+  document.getElementById('lpSave').onclick=async()=>{
+    const fullName=document.getElementById('lpName').value.trim();
+    const phone=document.getElementById('lpPhone').value.trim();
+    const email=document.getElementById('lpEmail').value.trim();
+    const destination=document.getElementById('lpDest').value;
+    const purpose=document.getElementById('lpPurpose').value;
+    const age=document.getElementById('lpAge').value.trim();
+    const edu=document.getElementById('lpEdu').value.trim();
+    const location=document.getElementById('lpLocation').value.trim();
+    if(!fullName||!phone||!email||!age||!edu||!location){ alert('All * fields required'); return; }
+    try{
+      const ref=await addDoc(collection(db,"clients"), {fullName, phone, email, destination, purpose, age, edu, location, status:'New Lead', loginPass:'', createdAt:serverTimestamp()});
+      await createNotification(ref.id, "New Application", `${fullName} applied for ${destination} from ${location}`);
+      location.hash='#applied'; initApplied();
+    }catch(e){ alert(e.message); }
+  };
+}
+function initApplied(){ document.querySelector('#app').innerHTML=`<div style="min-height:100vh; background:#f5f7fb; display:grid; place-items:center; padding:24px;"><div style="background:white; padding:32px; border-radius:16px; border:1px solid #eee; text-align:center;"><h2 style="font-weight:bold;">Application Received!</h2><p style="font-size:13px; opacity:0.7; margin-top:8px;">Auto sent to Admin</p><a href="#" style="display:inline-block; margin-top:16px; color:#2563eb;">← Home</a></div></div>`; }
+function initClientLogin(){
+  document.querySelector('#app').innerHTML=clientLoginHTML;
+  document.getElementById('forgotBtn').onclick=()=> document.getElementById('forgotModal').style.display='grid';
+  document.getElementById('sendReset').onclick=async()=>{
+    const email=document.getElementById('forgotEmail').value.trim();
+    const st=document.getElementById('forgotStatus');
+    if(!email){ st.innerText='Enter email'; return; }
+    st.innerText='Searching...';
+    try{
+      const q=query(collection(db,"clients"), where("email","==",email));
+      const snap=await getDocs(q);
+      if(snap.empty){ st.innerText='No client with that email'; return; }
+      let docId=null, client=null; snap.forEach(d=>{ docId=d.id; client=d.data(); });
+      const newPass=genPass();
+      await updateDoc(doc(db,"clients",docId), {loginPass:newPass, status:'Password Reset'});
+      await sendEmailAuto(email, client.fullName, newPass, client.destination, client.phone);
+      await createNotification(docId, "Password Reset", `New password: ${newPass}`);
+      st.innerText=`✅ New password: ${newPass} (Email sent if EmailJS configured)`;
+    }catch(e){ st.innerText='Error: '+e.message; }
+  };
+  document.getElementById('clLogin').onclick=async()=>{
+    const input=document.getElementById('clPhone').value.trim();
+    const pass=document.getElementById('clPass').value.trim();
+    const err=document.getElementById('clErr');
+    try{
+      let q=query(collection(db,"clients"), where("email","==",input));
+      let snap=await getDocs(q);
+      let found=null;
+      snap.forEach(d=>{ if(d.data().loginPass===pass) found={id:d.id,...d.data()}; });
+      if(!found){ q=query(collection(db,"clients"), where("phone","==",input)); snap=await getDocs(q); snap.forEach(d=>{ if(d.data().loginPass===pass) found={id:d.id,...d.data()}; }); }
+      if(!found){ err.style.display='block'; err.style.background='#fef2f2'; err.style.color='#dc2626'; err.innerText='Wrong credentials'; return; }
+      sessionStorage.setItem('hh_client', JSON.stringify(found));
+      initClientDash(found);
+    }catch(e){ err.style.display='block'; err.innerText=e.message; }
+  };
+}
+function initClientDash(c){
+  if(!c){ const s=sessionStorage.getItem('hh_client'); if(!s){ initClientLogin(); return; } c=JSON.parse(s); }
+  document.querySelector('#app').innerHTML=`
+  <div style="min-height:100vh; background:#f5f7fb; font-family:Poppins,sans-serif;">
+  <div style="background:white; border-bottom:1px solid #eee; padding:16px 24px; display:flex; justify-content:space-between; position:sticky; top:0;"><div><div style="font-weight:bold;">${c.fullName} 👋</div><div style="font-size:11px; opacity:0.6;">${c.destination} - ${c.location||''}</div></div><div style="display:flex; gap:10px;"><button id="notifBellClient" style="position:relative; background:#f3f4f6; border:none; width:40px; height:40px; border-radius:50%; display:grid; place-items:center; cursor:pointer;">🔔<span id="notifCountClient" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:white; font-size:9px; width:18px; height:18px; border-radius:50%; display:grid; place-items:center;">0</span></button><button onclick="sessionStorage.removeItem('hh_client'); location.hash=''; location.reload()" style="font-size:12px; background:#f3f4f6; border:none; padding:8px 14px; border-radius:999px; cursor:pointer;">Logout</button></div></div>
+  <div id="notifPanelClient" style="display:none; position:fixed; top:64px; right:16px; background:white; border:1px solid #eee; border-radius:16px; width:340px; max-height:400px; overflow:auto; padding:16px; z-index:30; box-shadow:0 10px 30px rgba(0,0,0,0.1);"><h3 style="font-weight:bold; font-size:13px;">🔔 Notifications</h3><div id="notifListClient" style="margin-top:12px; font-size:12px;">Loading...</div></div>
+  <div style="max-width:1000px; margin:auto; padding:24px;"><div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;"><div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Status</div><div style="margin-top:8px; background:#fef3c7; color:#92400e; display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px;">${c.status}</div></div><div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Login</div><div style="font-weight:bold; font-size:13px; margin-top:4px;">${c.email}</div><div style="font-size:11px;">${c.loginPass||''}</div></div><div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Support</div><div style="font-weight:bold;">0789 338 183</div></div></div></div>
+  </div>`;
+  const bell=document.getElementById('notifBellClient');
+  const panel=document.getElementById('notifPanelClient');
+  if(bell) bell.onclick=()=> panel.style.display= panel.style.display==='none'?'block':'none';
+  try{
+    const q=query(collection(db,"notifications"), where("clientId","==",c.id));
+    onSnapshot(q, snap=>{
+      const list=[]; snap.forEach(d=> list.push(d.data()));
+      list.sort((a,b)=> (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+      const cnt=document.getElementById('notifCountClient');
+      if(cnt){ const unread=list.filter(n=>!n.read).length; if(unread>0){ cnt.innerText=unread; cnt.style.display='grid'; } else cnt.style.display='none'; }
+      document.getElementById('notifListClient').innerHTML= list.length? list.map(n=>`<div style="padding:10px; border:1px solid #eee; border-radius:10px; background:${!n.read?'#eff6ff':'white'}"><b>${n.title}</b><div style="font-size:11px; opacity:0.7; margin-top:4px;">${n.message}</div></div>`).join('') : '<div style="opacity:0.5;">No notifications</div>';
+    });
+  }catch(e){}
+}
+function initStaffLogin(){
+  document.querySelector('#app').innerHTML=staffLoginHTML;
+  document.getElementById('stLogin').onclick=async()=>{
+    const email=document.getElementById('stEmail').value.trim();
+    const pass=document.getElementById('stPass').value.trim();
+    const err=document.getElementById('stErr');
+    try{
+      const q=query(collection(db,"staffs"), where("email","==",email));
+      const snap=await getDocs(q);
+      let found=null; snap.forEach(d=>{ if(d.data().loginPass===pass) found={id:d.id,...d.data()}; });
+      if(!found){ err.style.display='block'; err.style.background='#fef2f2'; err.style.color='#dc2626'; err.innerText='Wrong staff credentials'; return; }
+      sessionStorage.setItem('hh_staff', JSON.stringify(found));
+      location.hash='#staff-dash'; initStaffDash(found);
+    }catch(e){ err.style.display='block'; err.innerText=e.message; }
+  };
+}
+
+// UNIQUE STAFF DASHBOARDS BY ROLE
+async function initStaffDash(s){
+  if(!s){ const saved=sessionStorage.getItem('hh_staff'); if(!saved){ initStaffLogin(); return; } s=JSON.parse(saved); }
+
+  // Ensure clients loaded
+  if(!allClients.length){
+    try{
+      const snap=await getDocs(collection(db,"clients"));
+      allClients=[]; snap.forEach(d=>allClients.push({id:d.id,...d.data()}));
+    }catch(e){ allClients=[]; }
+  }
+
+  const myClients = allClients.filter(c=>c.assignedStaffId===s.id);
+  const role = s.role || 'Agent';
+  const dept = s.department || 'N/A';
+
+  let dashboardContent = '';
+
+  if(role === 'Manager'){
+    const total = allClients.length;
+    const pending = allClients.filter(c=>c.status==='New Lead').length;
+    dashboardContent = `
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px;">
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">All Clients</div><div style="font-size:28px; font-weight:bold;">${total}</div><div style="font-size:10px; color:#2563eb;">Manager view - all</div></div>
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Pending</div><div style="font-size:28px; font-weight:bold;">${pending}</div></div>
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">My Assigned</div><div style="font-size:28px; font-weight:bold;">${myClients.length}</div></div>
+    </div>
+    <div style="background:white; border-radius:16px; border:1px solid #eee; padding:20px;">
+      <h3 style="font-weight:bold; margin:0 0 12px;">👔 Manager Dashboard - All Clients (Can Assign Staff)</h3>
+      <div style="display:flex; gap:8px; margin-bottom:12px;"><input id="managerSearch" placeholder="Search clients..." style="flex:1; border:1px solid #ddd; padding:10px; border-radius:10px;"><select id="managerFilter" style="border:1px solid #ddd; padding:10px; border-radius:10px;"><option value="">All Status</option>${STATUSES.map(st=>`<option>${st}</option>`).join('')}</select></div>
+      <div id="managerList">${renderClientListForStaff(allClients)}</div>
+    </div>`;
+  } else if(role === 'Agent'){
+    dashboardContent = `
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-bottom:20px;">
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">My Clients</div><div style="font-size:28px; font-weight:bold;">${myClients.length}</div><div style="font-size:10px; opacity:0.6;">Agent - ${dept}</div></div>
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Need Login</div><div style="font-size:28px; font-weight:bold;">${myClients.filter(c=>!c.loginPass).length}</div></div>
+    </div>
+    <div style="background:white; border-radius:16px; border:1px solid #eee; padding:20px;">
+      <h3 style="font-weight:bold; margin:0 0 12px;">🧑‍💻 Agent Dashboard - My Assigned Clients Only</h3>
+      <p style="font-size:11px; opacity:0.6; margin:0 0 12px;">You can create login, send WhatsApp, update status to Docs Received</p>
+      <div id="agentList">${renderClientListForStaff(myClients, true)}</div>
+    </div>`;
+  } else if(role === 'Docs Officer'){
+    dashboardContent = `
+    <div style="background:white; border-radius:16px; border:1px solid #eee; padding:20px;">
+      <h3 style="font-weight:bold; margin:0 0 12px;">📄 Docs Officer - ${dept}</h3>
+      <p style="font-size:11px; opacity:0.6;">Check docs, request missing docs via WhatsApp</p>
+      <div id="docsList" style="margin-top:16px;">${myClients.length? myClients.map(c=>`
+        <div style="border:1px solid #eee; border-radius:12px; padding:16px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between;"><b>${c.fullName}</b><span style="background:#eff6ff; padding:4px 8px; border-radius:999px; font-size:10px;">${c.destination} - ${c.status}</span></div>
+          <div style="font-size:11px; opacity:0.6; margin-top:4px;">${c.email} | ${c.phone} | 📍 ${c.location||''}</div>
+          <div style="margin-top:10px; font-size:11px;"><b>Checklist:</b> Passport, ID, Certificates, CV, Police Clearance</div>
+          <div style="margin-top:12px; display:flex; gap:8px;"><button onclick="window.docRequest('${c.id}')" style="background:#f59e0b; color:white; border:none; padding:8px 12px; border-radius:8px; font-size:11px; cursor:pointer;">Request Docs WA</button><button onclick="window.updateStatus('${c.id}','Docs Received')" style="background:#16a34a; color:white; border:none; padding:8px 12px; border-radius:8px; font-size:11px; cursor:pointer;">Mark Docs Received</button></div>
+        </div>
+      `).join('') : '<div style="opacity:0.5; text-align:center; padding:40px;">No clients assigned</div>'}</div>
+    </div>`;
+  } else if(role === 'Finance'){
+    dashboardContent = `
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-bottom:20px;">
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Total Revenue (est)</div><div style="font-size:28px; font-weight:bold;">KES ${(allClients.length*1500).toLocaleString()}</div></div>
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Clients</div><div style="font-size:28px; font-weight:bold;">${allClients.length}</div></div>
+    </div>
+    <div style="background:white; border-radius:16px; border:1px solid #eee; padding:20px;">
+      <h3 style="font-weight:bold; margin:0 0 12px;">💰 Finance Dashboard - ${dept}</h3>
+      <p style="font-size:11px; opacity:0.6;">Verify M-Pesa payments, track revenue</p>
+      <table style="width:100%; font-size:12px; margin-top:12px; border-collapse:collapse;"><thead style="font-size:11px; color:#999; border-bottom:1px solid #eee;"><tr><td style="padding:8px;">Client</td><td style="padding:8px;">Destination</td><td style="padding:8px;">Status</td><td style="padding:8px;">Payment</td></tr></thead><tbody>${allClients.slice(0,20).map(c=>`<tr style="border-top:1px solid #f3f4f6;"><td style="padding:8px;">${c.fullName}</td><td style="padding:8px;">${c.destination||''}</td><td style="padding:8px;">${c.status}</td><td style="padding:8px;"><span style="background:#fef3c7; padding:4px 8px; border-radius:999px;">Pending M-Pesa</span></td></tr>`).join('')}</tbody></table>
+    </div>`;
+  } else if(role === 'Recruiter'){
+    dashboardContent = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Total Staff</div><div style="font-size:28px; font-weight:bold;">${allStaff.length}</div></div>
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Total Clients</div><div style="font-size:28px; font-weight:bold;">${allClients.length}</div></div>
+    </div>
+    <div style="background:white; border-radius:16px; border:1px solid #eee; padding:20px;">
+      <h3 style="font-weight:bold; margin:0 0 12px;">📢 Recruiter Dashboard - ${dept}</h3>
+      <p style="font-size:11px; opacity:0.6;">View staff, you can recruit but not see client sensitive data</p>
+      <div style="margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">${allStaff.map(st=>`<div style="border:1px solid #eee; border-radius:10px; padding:12px;"><b>${st.fullName}</b> - ${st.role}<br><span style="font-size:11px; opacity:0.6;">${st.department||''} | ${st.email}</span></div>`).join('')}</div>
+    </div>`;
+  } else { // Admin staff or others
+    dashboardContent = `
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px;">
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">My Clients</div><div style="font-size:28px; font-weight:bold;">${myClients.length}</div></div>
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Role</div><div style="font-size:16px; font-weight:bold; margin-top:4px;">${role}</div><div style="font-size:11px; opacity:0.6;">${dept}</div></div>
+      <div style="background:white; padding:20px; border-radius:16px; border:1px solid #eee;"><div style="font-size:11px; opacity:0.6;">Department</div><div style="font-size:14px; font-weight:bold; margin-top:4px;">${dept}</div></div>
+    </div>
+    <div style="background:white; border-radius:16px; border:1px solid #eee; padding:20px;">
+      <h3 style="font-weight:bold; margin:0 0 12px;">🧑‍💼 ${role} Dashboard - ${dept}</h3>
+      <div id="adminStaffList">${renderClientListForStaff(myClients.length? myClients : allClients.slice(0,10), true)}</div>
+    </div>`;
+  }
+
+  document.querySelector('#app').innerHTML=`
+  <div style="min-height:100vh; background:#f5f7fb; font-family:Poppins,sans-serif;">
+  <div style="background:white; border-bottom:1px solid #eee; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
+    <div><div style="font-weight:bold; font-size:15px;">${s.fullName} - ${role} <span style="background:#eff6ff; color:#1d4ed8; padding:4px 8px; border-radius:999px; font-size:10px; margin-left:8px;">${dept}</span></div><div style="font-size:11px; opacity:0.6;">${s.email} | ${s.phone} | ID:${s.idNumber||'N/A'}</div></div>
+    <div style="display:flex; gap:10px;"><button id="notifBellStaff" style="position:relative; background:#f3f4f6; border:none; width:40px; height:40px; border-radius:50%; display:grid; place-items:center; cursor:pointer;">🔔<span id="notifCountStaff" style="display:none; position:absolute; top:-4px; right:-4px; background:#ef4444; color:white; font-size:9px; width:18px; height:18px; border-radius:50%; display:grid; place-items:center;">0</span></button><button onclick="sessionStorage.removeItem('hh_staff'); location.hash=''; location.reload()" style="font-size:12px; background:#f3f4f6; border:none; padding:8px 14px; border-radius:999px; cursor:pointer;">Logout</button></div>
+  </div>
+  <div id="notifPanelStaff" style="display:none; position:fixed; top:64px; right:16px; background:white; border:1px solid #eee; border-radius:16px; width:340px; max-height:400px; overflow:auto; padding:16px; z-index:30; box-shadow:0 10px 30px rgba(0,0,0,0.1);"><h3 style="font-weight:bold; font-size:13px;">🔔 Notifications</h3><div id="notifListStaff" style="margin-top:12px; font-size:12px;">Loading...</div></div>
+  <div style="max-width:1100px; margin:auto; padding:24px;">
+    ${dashboardContent}
+  </div>
+  </div>`;
+
+  // Search for manager
+  const searchEl=document.getElementById('managerSearch');
+  if(searchEl) searchEl.oninput=e=>{ const q=e.target.value.toLowerCase(); const filtered=allClients.filter(c=> c.fullName.toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q)); document.getElementById('managerList').innerHTML=renderClientListForStaff(filtered); };
+  const filterEl=document.getElementById('managerFilter');
+  if(filterEl) filterEl.onchange=e=>{ const v=e.target.value; const filtered=v? allClients.filter(c=>c.status===v) : allClients; document.getElementById('managerList').innerHTML=renderClientListForStaff(filtered); };
+
+  // Notifications for staff
+  try{
+    const q=query(collection(db,"notifications"), where("clientId","==",s.id));
+    onSnapshot(q, snap=>{
+      const list=[]; snap.forEach(d=> list.push(d.data()));
+      const cnt=document.getElementById('notifCountStaff');
+      if(cnt){ const unread=list.filter(n=>!n.read).length; if(unread>0){ cnt.innerText=unread; cnt.style.display='grid'; } else cnt.style.display='none'; }
+      const listEl=document.getElementById('notifListStaff');
+      if(listEl) listEl.innerHTML= list.length? list.map(n=>`<div style="padding:10px; border:1px solid #eee; border-radius:10px; margin-bottom:8px;"><b>${n.title}</b><div style="font-size:11px; opacity:0.7;">${n.message}</div></div>`).join('') : 'No notifications';
+    });
+  }catch(e){}
+  const bell=document.getElementById('notifBellStaff');
+  if(bell) bell.onclick=()=>{ const p=document.getElementById('notifPanelStaff'); p.style.display= p.style.display==='none'?'block':'none'; };
+}
+
+function renderClientListForStaff(list, withActions=false){
+  if(!list.length) return '<div style="opacity:0.5; text-align:center; padding:40px;">No clients</div>';
+  return list.map(c=>`
+    <div style="padding:12px; border-bottom:1px solid #f3f4f6; display:flex; justify-content:space-between; align-items:center; gap:12px;">
+      <div><b style="font-size:13px;">${c.fullName}</b> <span style="background:#eff6ff; color:#1d4ed8; padding:2px 8px; border-radius:999px; font-size:10px; margin-left:6px;">${c.destination||''} - ${c.status||''}</span><br><span style="font-size:11px; opacity:0.6;">${c.email||''} | ${c.phone||''} | 📍 ${c.location||''} | ${c.purpose||''}</span></div>
+      <div style="display:flex; gap:6px; flex-shrink:0;">
+        ${withActions? `<button onclick="window.updateStatus('${c.id}','Docs Received')" style="background:#eff6ff; color:#2563eb; border:none; padding:6px 10px; border-radius:8px; font-size:10px; cursor:pointer;">Docs OK</button><button onclick="window.waClient('${c.id}')" style="background:#dcfce7; color:#16a34a; border:none; padding:6px 10px; border-radius:8px; font-size:10px; cursor:pointer;">WA</button>` : ''}
+        <button onclick="window.openDocs('${c.id}')" style="background:black; color:white; padding:6px 12px; border-radius:999px; font-size:10px; border:none; cursor:pointer;">Manage</button>
+      </div>
+    </div>
+  `).join('');
+}
+window.waClient=(id)=>{ const c=allClients.find(x=>x.id===id); if(!c) return; let p=c.phone.replace(/[^0-9]/g,''); if(p.startsWith('0')) p='254'+p.substring(1); window.open(`https://wa.me/${p}`,'_blank'); };
+window.docRequest=(id)=>{ const c=allClients.find(x=>x.id===id); if(!c) return; let p=c.phone.replace(/[^0-9]/g,''); if(p.startsWith('0')) p='254'+p.substring(1); const msg=encodeURIComponent(`Hello ${c.fullName}, Hope House Travel - Docs Officer (${c.assignedStaffName||''})\n\nPlease send remaining documents: Passport, ID, Certificates, CV, Police Clearance.\n\nReply via WhatsApp.`); window.open(`https://wa.me/${p}?text=${msg}`,'_blank'); };
+
+function initAdmin(){
+  if(sessionStorage.getItem('hh_admin')!=='1'){
+    document.querySelector('#app').innerHTML=`<div style="min-height:100vh; background:#0f1e3a; display:grid; place-items:center; padding:24px;"><div style="background:white; padding:32px; border-radius:16px; width:100%; max-width:380px;"><h2 style="font-weight:bold; text-align:center;">Admin - Hope@2030</h2><input id="adminPass" type="password" placeholder="Password" style="margin-top:24px; width:100%; border:1px solid #e5e7eb; padding:12px; border-radius:12px;"><button id="unlock" style="margin-top:16px; width:100%; background:#2563eb; color:white; padding:12px; border-radius:12px; border:none; cursor:pointer;">Unlock</button><p id="loginErr" style="display:none; color:#ef4444; font-size:12px; text-align:center; margin-top:8px;">Wrong password</p></div></div>`;
+    document.getElementById('unlock').onclick=()=>{ if(document.getElementById('adminPass').value===ADMIN_PASS){ sessionStorage.setItem('hh_admin','1'); initAdmin(); } else document.getElementById('loginErr').style.display='block'; };
+    return;
+  }
+  document.querySelector('#app').innerHTML=dashboardHTML;
+  document.querySelectorAll('.tabBtn').forEach(btn=>{
+    btn.onclick=()=>{
+      document.querySelectorAll('.tabBtn').forEach(b=>{ b.style.background='transparent'; b.style.color='white'; b.style.fontWeight='normal'; });
+      btn.style.background='white'; btn.style.color='black'; btn.style.fontWeight='bold';
+      document.querySelectorAll('.tabView').forEach(v=>v.style.display='none');
+      document.getElementById('view-'+btn.dataset.tab).style.display='block';
+    };
+  });
+  document.getElementById('backHome').onclick=()=>{ location.hash=''; location.reload(); };
+  document.getElementById('logoutBtn').onclick=()=>{ sessionStorage.removeItem('hh_admin'); location.hash=''; location.reload(); };
+  document.getElementById('openRecruitModal').onclick=()=>{ document.querySelector('[data-tab="recruit"]').click(); };
+  document.getElementById('genStaffPass').onclick=()=> document.getElementById('staffPass').value=genStaffPass();
+  document.getElementById('createStaffBtn').onclick=async()=>{
+    const fullName=document.getElementById('staffName').value.trim();
+    const email=document.getElementById('staffEmail').value.trim();
+    const phone=document.getElementById('staffPhone').value.trim();
+    const role=document.getElementById('staffRole').value;
+    const idNumber=document.getElementById('staffId').value.trim();
+    const department=document.getElementById('staffDept').value;
+    let pass=document.getElementById('staffPass').value.trim() || genStaffPass();
+    const st=document.getElementById('staffStatus');
+    if(!fullName||!email||!phone||!department){ st.style.display='block'; st.innerText='Name, Email, Phone, Department required *'; st.style.background='#fef2f2'; st.style.color='#dc2626'; return; }
+    st.style.display='block'; st.innerText='Creating...'; st.style.background='#eff6ff'; st.style.color='#2563eb';
+    try{
+      const docRef=await addDoc(collection(db,"staffs"), {fullName, email, phone, role, idNumber, department, loginPass:pass, active:true, createdAt:serverTimestamp()});
+      await createNotification(docRef.id, "Staff Recruited", `${fullName} joined as ${role} in ${department}`);
+      await sendEmailAuto(email, fullName, pass, `Staff Role: ${role} Dept: ${department}`, phone);
+      let p=phone.replace(/[^0-9]/g,''); if(p.startsWith('0')) p='254'+p.substring(1);
+      const msg=encodeURIComponent(`Hello ${fullName}! Hope House Travel\n✅ RECRUITED\nRole:${role}\nDepartment:${department}\nLogin: https://hope-house-travel.web.app/#staff-login\nEmail:${email}\nPass:${pass}\nYour dashboard will be unique for ${role}`);
+      st.innerText=`✅ ${fullName} recruited as ${role} - ${department}! Pass:${pass}`;
+      st.style.background='#dcfce7'; st.style.color='#166534';
+      window.open(`https://wa.me/${p}?text=${msg}`,'_blank');
+      load();
+      document.getElementById('staffName').value=''; document.getElementById('staffEmail').value=''; document.getElementById('staffPhone').value='';
+    }catch(e){ st.innerText='Error:'+e.message; st.style.background='#fef2f2'; st.style.color='#dc2626'; }
+  };
+  document.getElementById('search').oninput=e=>{ const q=e.target.value.toLowerCase(); renderClients(allClients.filter(c=> (c.fullName||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.location||'').toLowerCase().includes(q))); };
+  document.getElementById('filterDest').onchange=e=>{ const v=e.target.value; renderClients(v? allClients.filter(c=>c.destination===v): allClients); };
+  document.getElementById('filterStatus').onchange=e=>{ const v=e.target.value; renderClients(v? allClients.filter(c=>c.status===v): allClients); };
+  document.getElementById('exportCsvBtn').onclick=()=>{
+    const headers=["Name","Email","Phone","Destination","Location","Status","Pass","Staff","Dept"];
+    const rows=allClients.map(c=> [c.fullName, c.email||'', c.phone, c.destination, c.location||'', c.status||'', c.loginPass||'', c.assignedStaffName||'', c.assignedStaffId? allStaff.find(s=>s.id===c.assignedStaffId)?.department||'' : ''].map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(','));
+    const csv=[headers.join(','),...rows].join('\n');
+    const blob=new Blob([csv], {type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='hope_house_clients.csv'; a.click();
+  };
+  try{
+    onSnapshot(collection(db,"notifications"), snap=>{
+      const list=[]; snap.forEach(d=> list.push(d.data()));
+      list.sort((a,b)=> (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+      const el=document.getElementById('notifListAdmin');
+      if(el) el.innerHTML= list.slice(0,15).map(n=>`<div style="padding:8px; border-bottom:1px solid #f3f4f6;"><b>${n.title}</b> - ${n.message.slice(0,80)}</div>`).join('') || 'No notifications';
+      const cnt=document.getElementById('notifCountAdmin');
+      if(cnt){ const unread=list.filter(n=>!n.read).length; if(unread>0){ cnt.innerText=unread; cnt.style.display='grid'; } else cnt.style.display='none'; }
+    });
+  }catch(e){}
+  load();
+}
+
+function router(){
+  const h=location.hash;
+  if(h==='#admin') initAdmin();
+  else if(h==='#client-login') initClientLogin();
+  else if(h==='#staff-login') initStaffLogin();
+  else if(h==='#staff-dash') initStaffDash();
+  else if(h==='#client-dash'){ const s=sessionStorage.getItem('hh_client'); if(s) initClientDash(JSON.parse(s)); else initClientLogin(); }
+  else if(h==='#applied') initApplied();
+  else initLanding();
+}
+router();
+window.addEventListener('hashchange', router);
